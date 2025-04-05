@@ -1,0 +1,144 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url  	    = env("DATABASE_URL")
+  // uncomment next line if you use Prisma <5.10
+  // directUrl = env("DATABASE_URL_UNPOOLED")
+}
+
+enum BookingStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+model User {
+  id                 Int                 @id @default(autoincrement())
+  email              String              @unique
+  password           String
+  firstName          String
+  lastName           String
+  profilePic         String?
+  phone              String?
+  IsHotelOwner       Boolean             @default(false)
+  hotels             Hotel[]
+  hotelReservations  HotelReservation[]
+  flightReservations FlightReservation[]
+  itineraries        Itinerary[]
+  notifications      Notification[]
+}
+
+model Hotel {
+  id           Int                @id @default(autoincrement())
+  name         String
+  logo         String // store picture url
+  address      String // store street and zip code
+  location     String // store city and country
+  starRating   Int
+  images       Json // store picture urls
+  owner        User?              @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId      Int?
+  roomTypes    RoomType[]
+  reservations HotelReservation[]
+}
+
+model RoomType {
+  id                  Int                      @id @default(autoincrement())
+  name                String
+  amenities           String?
+  pricePerNight       Float
+  images              Json // JSON string
+  currentAvailability Int
+  hotel               Hotel                    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotelId             Int
+  availabilityRecord  RoomAvailabilityRecord[]
+  reservations        HotelReservation[]
+}
+
+model RoomAvailabilityRecord {
+  id           Int      @id @default(autoincrement())
+  date         DateTime
+  availability Int
+  RoomType     RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  roomTypeId   Int
+}
+
+model HotelReservation {
+  id          Int           @id @default(autoincrement())
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int
+  itinerary   Itinerary?    @relation(fields: [itineraryId], references: [id])
+  itineraryId Int?          @unique
+  hotel       Hotel?        @relation(fields: [hotelId], references: [id], onDelete: SetNull)
+  hotelId     Int?
+  roomType    RoomType?     @relation(fields: [roomTypeId], references: [id], onDelete: SetNull)
+  roomTypeId  Int?
+  checkIn     DateTime
+  checkOut    DateTime
+  price       Float
+  status      BookingStatus @default(CONFIRMED)
+  createdAt   DateTime      @default(now())
+}
+
+model FlightReservation {
+  id           Int           @id @default(autoincrement())
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       Int
+  itinerary    Itinerary?    @relation(fields: [itineraryId], references: [id])
+  itineraryId  Int?          @unique
+  afsBookingId String // Reference to AFS booking ID
+  departure    Json // { date: DateTime, airport: String }
+  arrival      Json // { date: DateTime, airport: String }
+  price        Float
+  status       BookingStatus @default(CONFIRMED)
+  createdAt    DateTime      @default(now())
+}
+
+model Itinerary {
+  id          Int                @id @default(autoincrement())
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int
+  flight      FlightReservation?
+  hotel       HotelReservation?
+  totalPrice  Float
+  status      BookingStatus      @default(CONFIRMED)
+  cardNumber  String // Last 4 digits only for security
+  cardExpiry  String
+  bookingDate DateTime           @default(now())
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  content   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model City {
+  id       Int       @id @default(autoincrement())
+  name     String
+  country  String
+  airports Airport[]
+}
+
+model Airport {
+  id         Int    @id @default(autoincrement())
+  externalId String @unique // id from AFS API
+  code       String @unique // e.g. "PEK"
+  name       String
+  country    String
+  city       City?  @relation(fields: [cityId], references: [id])
+  cityId     Int?
+}

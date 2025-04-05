@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  nextjs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - JWT_ACCESS_TOKEN_EXPIRY_TIME=${JWT_ACCESS_TOKEN_EXPIRY_TIME}
+      - JWT_REFRESH_TOKEN_EXPIRY_TIME=${JWT_REFRESH_TOKEN_EXPIRY_TIME}
+      - AFS_API_KEY=${AFS_API_KEY}
+      - AFS_BASE_URL=${AFS_BASE_URL}
+    volumes:
+      - uploads-volume:/app/public/uploads
+    depends_on:
+      - postgres
+    restart: always
+
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=flynextdb_owner
+      - POSTGRES_PASSWORD=npg_VDxbT28qIzwQ
+      - POSTGRES_DB=flynextdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  postgres_data:
+  uploads-volume:
