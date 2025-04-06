@@ -352,7 +352,7 @@ BEGIN
         'Room Type ' || hotel_rec.id || '-' || r,
         'Amenity1, Amenity2',
         100 + 10 * ((hotel_rec.id * 2) + r),
-        '["https://example.com/room_default.png"]',
+        '[]',
         10 + ((hotel_rec.id * 2) + r),
         hotel_rec.id
       );

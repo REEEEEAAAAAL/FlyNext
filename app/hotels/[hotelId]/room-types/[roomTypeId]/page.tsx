@@ -59,7 +59,7 @@ export default function RoomTypeDetailsPage() {
           <p className="text-gray-700 mb-2">
             <strong>Current Availability:</strong> {roomType.currentAvailability}
           </p>
-          {roomType.images && roomType.images.length > 0 && (
+          {roomType.images && roomType.images.length > 0 ? (
             <div className="mt-6">
               <h2 className="text-2xl font-semibold text-gray-800 mb-3">Gallery</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -73,6 +73,8 @@ export default function RoomTypeDetailsPage() {
                 ))}
               </div>
             </div>
+          ) : (
+            <p className="text-gray-700 mt-6">The owner has not provided any images for this room.</p>
           )}
         </div>
       )}

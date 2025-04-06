@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -24,6 +24,7 @@ interface HotelFormData {
   address: string;
   location: string;
   starRating: number;
+  images: string[]; // hotel's images array
 }
 
 export default function EditHotelPage() {
@@ -35,7 +36,6 @@ export default function EditHotelPage() {
     const fetchData = async () => {
       const token = localStorage.getItem("accessToken");
       if (!token) {
-        // Redirect to login if no token found.
         router.push("/auth/login");
         return;
       }
@@ -47,7 +47,6 @@ export default function EditHotelPage() {
       });
 
       if (response.status === 401) {
-        // Token expired or invalid - try refreshing
         localStorage.removeItem("accessToken");
         router.push("/auth/refresh");
         return;
@@ -62,20 +61,22 @@ export default function EditHotelPage() {
     fetchData();
   }, [router]);
 
-  // Form state for text fields.
+  // Form state for hotel details.
   const [formData, setFormData] = useState<HotelFormData>({
     name: "",
     logo: "",
     address: "",
     location: "",
     starRating: 1,
+    images: [],
   });
 
   // For images, we use a separate state with preview functionality.
   const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
-  // New state for room types.
+
+  // State for room types.
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
 
   const [loading, setLoading] = useState(false);
@@ -113,6 +114,7 @@ export default function EditHotelPage() {
             address: hotelData.address || "",
             location: hotelData.location || "",
             starRating: hotelData.starRating || 1,
+            images: hotelData.images || [],
           });
           // Set logo preview if available.
           if (hotelData.logo) {
@@ -126,7 +128,7 @@ export default function EditHotelPage() {
             }));
             setSelectedImages(imagesArr);
           }
-          // Set room types.
+          // Set room types if needed.
           if (hotelData.roomTypes && Array.isArray(hotelData.roomTypes)) {
             setRoomTypes(hotelData.roomTypes);
           }
@@ -171,13 +173,15 @@ export default function EditHotelPage() {
     }
   };
 
-  // Remove an image from selectedImages.
-  const removeImage = (index: number) => {
-    setSelectedImages((prev) => prev.filter((_, i) => i !== index));
+  // Remove an image using its previewUrl as a unique key.
+  const removeImage = (previewUrl: string) => {
+    setSelectedImages((prev) =>
+      prev.filter((item) => item.previewUrl !== previewUrl)
+    );
   };
 
   // Handle form submission for updating hotel details.
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
     setMessage("");
@@ -191,9 +195,7 @@ export default function EditHotelPage() {
       }
 
       const response = await fetch("/api/user", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (response.status === 401) {
@@ -208,13 +210,13 @@ export default function EditHotelPage() {
       data.append("address", formData.address);
       data.append("location", formData.location);
       data.append("starRating", formData.starRating.toString());
-      // Append logo file if a new one is selected; otherwise, send the existing logo URL.
+      // Append logo: if a new logo file is selected, use it; otherwise, send the current logo URL.
       if (logoFile) {
         data.append("logo", logoFile);
       } else {
         data.append("logo", formData.logo);
       }
-      // Append hotel images.
+      // Append hotel images: this will update the hotel's images to exactly match the selectedImages state.
       selectedImages.forEach((item) => {
         if (item.file) {
           data.append("images", item.file);
@@ -225,9 +227,7 @@ export default function EditHotelPage() {
 
       const res = await fetch(`/api/hotels/${hotelId}`, {
         method: "PUT",
-        headers: {
-          Authorization: token ? `Bearer ${token}` : "",
-        },
+        headers: { Authorization: token ? `Bearer ${token}` : "" },
         body: data,
       });
       const resData = await res.json();
@@ -235,6 +235,18 @@ export default function EditHotelPage() {
         setError(resData.error || "Failed to update hotel.");
       } else {
         setMessage(resData.message || "Hotel updated successfully!");
+        // Update the form state with the latest images from the response.
+        if (resData.hotel && Array.isArray(resData.hotel.images)) {
+          setFormData((prev) => ({
+            ...prev,
+            images: resData.hotel.images,
+          }));
+          const updatedImages = resData.hotel.images.map((url: string) => ({
+            file: null,
+            previewUrl: url,
+          }));
+          setSelectedImages(updatedImages);
+        }
         setTimeout(() => {
           router.push("/hotels/owner");
         }, 1500);
@@ -248,19 +260,16 @@ export default function EditHotelPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-8 bg-white text-black shadow-md rounded relative">
-      {/* Delete Button placed at the upper right corner */}
+      {/* Delete Button */}
       <button
         type="button"
         onClick={async () => {
-          if (!confirm("Are you sure you want to delete this hotel?"))
-            return;
+          if (!confirm("Are you sure you want to delete this hotel?")) return;
           try {
             const token = localStorage.getItem("accessToken");
             const res = await fetch(`/api/hotels/${hotelId}`, {
               method: "DELETE",
-              headers: {
-                Authorization: token ? `Bearer ${token}` : "",
-              },
+              headers: { Authorization: token ? `Bearer ${token}` : "" },
             });
             const data = await res.json();
             if (!res.ok) {
@@ -339,7 +348,7 @@ export default function EditHotelPage() {
                   strokeLinejoin="round"
                   strokeWidth={2}
                   d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-                />
+              />
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -448,20 +457,20 @@ export default function EditHotelPage() {
               />
             </label>
 
-            {/* Horizontally scrollable gallery of images */}
-            {selectedImages.length > 0 && (
+            {/* Image gallery or default message if none */}
+            {selectedImages.length > 0 ? (
               <div className="mt-2 w-full overflow-x-scroll">
                 <div className="flex flex-nowrap space-x-4">
-                  {selectedImages.map((item, index) => (
-                    <div key={index} className="relative flex-shrink-0">
+                  {selectedImages.map((item) => (
+                    <div key={item.previewUrl} className="relative flex-shrink-0">
                       <img
                         src={item.previewUrl}
-                        alt={`Image ${index + 1}`}
+                        alt={`Image of ${formData.name}`}
                         className="h-32 w-auto object-contain"
                       />
                       <button
                         type="button"
-                        onClick={() => removeImage(index)}
+                        onClick={() => removeImage(item.previewUrl)}
                         className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-1 hover:bg-red-700"
                         title="Remove image"
                       >
@@ -484,6 +493,10 @@ export default function EditHotelPage() {
                   ))}
                 </div>
               </div>
+            ) : (
+              <p className="text-gray-700 mt-2">
+                The owner has not provided any images for this hotel.
+              </p>
             )}
           </div>
 

@@ -125,36 +125,42 @@ export async function PUT(request, { params }) {
     // Prepare the updates object.
     const updates = {};
     if (name) updates.name = name;
-    if (amenities) updates.amenities = amenities; // You may parse JSON if needed.
+    if (amenities) updates.amenities = amenities;
     if (pricePerNight) updates.pricePerNight = parseFloat(pricePerNight);
     if (currentAvailability) updates.currentAvailability = Number(currentAvailability);
 
-    // Process images files if provided (support multiple files).
-    const imagesFiles = formData.getAll("images");
-    if (imagesFiles && imagesFiles.length > 0) {
+    // Process images from the form.
+    // The formData "images" field may contain both File objects (new uploads) and strings (existing URLs).
+    const imagesEntries = formData.getAll("images");
+    const imagesUrls = [];
+    if (imagesEntries) {
       const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
       const maxSize = 5 * 1024 * 1024; // 5MB
-      const imagesUrls = [];
-      for (const imageFile of imagesFiles) {
-        if (imageFile && imageFile.size > 0) {
-          if (!allowedTypes.includes(imageFile.type)) {
+
+      for (const entry of imagesEntries) {
+        // If the entry is a string, it is an existing image URL.
+        if (typeof entry === "string") {
+          imagesUrls.push(entry);
+        } else if (entry && entry.size > 0) {
+          // Otherwise, it is a File object, so process the upload.
+          if (!allowedTypes.includes(entry.type)) {
             return new Response(
               JSON.stringify({ error: "Invalid file type for one of the images." }),
               { status: 400, headers: { "Content-Type": "application/json" } }
             );
           }
-          if (imageFile.size > maxSize) {
+          if (entry.size > maxSize) {
             return new Response(
               JSON.stringify({ error: "One of the image files exceeds 5MB." }),
               { status: 400, headers: { "Content-Type": "application/json" } }
             );
           }
           try {
-            const fileExtension = imageFile.name.split(".").pop();
+            const fileExtension = entry.name.split(".").pop();
             const fileName = `${uuidv4()}.${fileExtension}`;
             const uploadDir = path.join(process.cwd(), "public", "uploads", "roomTypes");
             const filePath = path.join(uploadDir, fileName);
-            const buffer = await imageFile.arrayBuffer();
+            const buffer = await entry.arrayBuffer();
             await writeFile(filePath, Buffer.from(buffer));
             imagesUrls.push(`/uploads/roomTypes/${fileName}`);
           } catch (error) {
@@ -166,9 +172,9 @@ export async function PUT(request, { params }) {
           }
         }
       }
-      // Update images field with new uploaded image URLs.
-      updates.images = imagesUrls;
     }
+    // Update the room type's images to exactly the imagesUrls array (even if it's empty).
+    updates.images = imagesUrls;
 
     // Update the room type.
     const updatedRoomType = await prisma.roomType.update({

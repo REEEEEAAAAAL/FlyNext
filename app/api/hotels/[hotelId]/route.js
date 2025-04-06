@@ -41,10 +41,10 @@ export async function PUT(request, { params }) {
   // verify token
   const payload = await verifyToken(request);
   if (!payload) {
-    return new Response(
-      JSON.stringify({ message: "Unauthorized" }),
-      { status: 401, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ message: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   // check if the hotel exists, and the user is the owner
@@ -52,23 +52,23 @@ export async function PUT(request, { params }) {
     where: { id: Number(hotelId) },
   });
   if (!hotel) {
-    return new Response(
-      JSON.stringify({ message: "Hotel not found" }),
-      { status: 404, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ message: "Hotel not found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
   }
   if (hotel.ownerId !== payload.userId) {
-    return new Response(
-      JSON.stringify({ message: "Operation is forbidden" }),
-      { status: 403, headers: { "Content-Type": "application/json" } }
-    );
+    return new Response(JSON.stringify({ message: "Operation is forbidden" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
-    // Use formData() to handle multipart/form-data for file uploads
+    // Use formData() to handle multipart/form-data for potential file uploads.
     const formData = await request.formData();
 
-    // Prepare updates object by processing text fields
+    // Prepare updates object by processing text fields.
     const updates = {};
     const textFields = ["name", "address", "location", "starRating"];
     textFields.forEach((field) => {
@@ -76,18 +76,20 @@ export async function PUT(request, { params }) {
         updates[field] = formData.get(field);
       }
     });
-    // convert starRating 
+    // Convert starRating if provided.
     if (updates.starRating) {
       updates.starRating = Number(updates.starRating);
     }
 
-    // Process logo file if provided
+    // Process logo file if provided.
     const logoFile = formData.get("logo");
     if (logoFile && logoFile.size > 0) {
       const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
       if (!allowedTypes.includes(logoFile.type)) {
         return new Response(
-          JSON.stringify({ error: "Invalid file type for logo. Only JPEG, PNG, and WebP images are allowed." }),
+          JSON.stringify({
+            error: "Invalid file type for logo. Only JPEG, PNG, and WebP images are allowed."
+          }),
           { status: 400, headers: { "Content-Type": "application/json" } }
         );
       }
@@ -115,47 +117,50 @@ export async function PUT(request, { params }) {
       }
     }
 
-    // Process images files if provided (支持多文件上传)
-    const imagesFiles = formData.getAll("images");
-    if (imagesFiles && imagesFiles.length > 0) {
-      const imagesUrls = [];
-      for (const imageFile of imagesFiles) {
-        if (imageFile && imageFile.size > 0) {
-          const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
-          if (!allowedTypes.includes(imageFile.type)) {
-            return new Response(
-              JSON.stringify({ error: "Invalid file type for one of the images." }),
-              { status: 400, headers: { "Content-Type": "application/json" } }
-            );
-          }
-          const maxSize = 5 * 1024 * 1024; // 5MB
-          if (imageFile.size > maxSize) {
-            return new Response(
-              JSON.stringify({ error: "One of the image files exceeds 5MB." }),
-              { status: 400, headers: { "Content-Type": "application/json" } }
-            );
-          }
-          try {
-            const fileExtension = imageFile.name.split(".").pop();
-            const fileName = `${uuidv4()}.${fileExtension}`;
-            const uploadDir = path.join(process.cwd(), "public", "uploads", "hotels");
-            const filePath = path.join(uploadDir, fileName);
-            const buffer = await imageFile.arrayBuffer();
-            await writeFile(filePath, Buffer.from(buffer));
-            imagesUrls.push(`/uploads/hotels/${fileName}`);
-          } catch (error) {
-            console.error("Error saving image file:", error);
-            return new Response(
-              JSON.stringify({ error: "Failed to upload one of the images." }),
-              { status: 500, headers: { "Content-Type": "application/json" } }
-            );
-          }
+    // Process images from the form (supporting both new uploads and existing URLs).
+    // Even if no images are provided, we update the hotel's images field to an empty array.
+    const imagesEntries = formData.getAll("images");
+    const imagesUrls = [];
+    for (const entry of imagesEntries) {
+      // If the entry is a string, assume it's an existing image URL.
+      if (typeof entry === "string") {
+        imagesUrls.push(entry);
+      } else if (entry && entry.size > 0) {
+        const allowedTypes = ["image/jpeg", "image/png", "image/jpg", "image/webp"];
+        const maxSize = 5 * 1024 * 1024; // 5MB
+        if (!allowedTypes.includes(entry.type)) {
+          return new Response(
+            JSON.stringify({ error: "Invalid file type for one of the images." }),
+            { status: 400, headers: { "Content-Type": "application/json" } }
+          );
+        }
+        if (entry.size > maxSize) {
+          return new Response(
+            JSON.stringify({ error: "One of the image files exceeds 5MB." }),
+            { status: 400, headers: { "Content-Type": "application/json" } }
+          );
+        }
+        try {
+          const fileExtension = entry.name.split(".").pop();
+          const fileName = `${uuidv4()}.${fileExtension}`;
+          const uploadDir = path.join(process.cwd(), "public", "uploads", "hotels");
+          const filePath = path.join(uploadDir, fileName);
+          const buffer = await entry.arrayBuffer();
+          await writeFile(filePath, Buffer.from(buffer));
+          imagesUrls.push(`/uploads/hotels/${fileName}`);
+        } catch (error) {
+          console.error("Error saving image file:", error);
+          return new Response(
+            JSON.stringify({ error: "Failed to upload one of the images." }),
+            { status: 500, headers: { "Content-Type": "application/json" } }
+          );
         }
       }
-      // 如果传入了 images 文件，则更新 images 字段为上传后的 URL 数组
-      updates.images = imagesUrls;
     }
+    // Always update the images field to exactly match the submitted images.
+    updates.images = imagesUrls;
 
+    // Update the hotel record.
     const updatedHotel = await prisma.hotel.update({
       where: { id: Number(hotelId) },
       data: updates,
