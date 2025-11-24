@@ -41,4 +41,4 @@ yarn-error.log*
 next-env.d.ts
 
 # testers
-api.test.js
+api.test.js".env" 
