@@ -2,6 +2,7 @@ import "./globals.css";
 import NavigationBar from "./components/NavigationBar";
 import { FeedbackProvider } from "./context/FeedbackContext";
 import { ThemeProvider } from "./context/ThemeContext";
+import { Analytics } from "@vercel/analytics/next";
 
 export const metadata = {
   title: "FlyNext",
@@ -63,6 +64,7 @@ export default function RootLayout({
             {children}
           </FeedbackProvider>
         </ThemeProvider>
+        <Analytics />
       </body>
     </html>
   );
