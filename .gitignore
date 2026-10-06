@@ -1,0 +1,61 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+# testing
+/coverage
+/.vitest
+
+# next.js
+/.next/
+/out/
+
+# compiled server output (npm run build:server)
+/dist
+
+# production
+/build
+
+# misc
+.DS_Store
+*.pem
+
+# local scratch databases
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files (can opt-in for committing if needed)
+.env*
+# ...except the template, which is what a fresh clone copies from.
+!.env.example
+
+# vercel
+.vercel
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+.acl-recovery/
+.npm-cache/
+/dev_docs
+
+# previous values saved by scripts/repair-flight-directions.ts — booking data,
+# so it stays local
+repair-flight-directions.backup.json

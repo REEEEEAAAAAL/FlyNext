@@ -1,0 +1,48 @@
+{
+	/*
+	 * Standalone build for the framework-independent server code.
+	 *
+	 * The Next.js App Router compiles its own route handlers into `.next` (that
+	 * is what `next build` produces, and `tsconfig.json` covers it with
+	 * `noEmit`). This project produces a second, conventional `tsc` emit for the
+	 * parts that are not framework code: the `lib/` server modules and the Prisma
+	 * seed script. Output lands in `dist/` as plain CommonJS, so
+	 * `node dist/prisma/seed.js` runs without a TypeScript loader.
+	 *
+	 * `lib/` deliberately uses only relative imports internally, which is what
+	 * makes this emit runnable: no emitted `require()` depends on the `@/*`
+	 * path alias, which only the Next.js bundler resolves.
+	 */
+	"compilerOptions": {
+		/* Language and module system */
+		"target": "ES2022",
+		"lib": ["ES2022"],
+		"module": "commonjs",
+		"moduleResolution": "node",
+		"esModuleInterop": true,
+		"resolveJsonModule": true,
+
+		/* Emit layout */
+		"rootDir": ".",
+		"outDir": "dist",
+		"sourceMap": true,
+		"declaration": false,
+		"removeComments": false,
+
+		/* Type safety */
+		"strict": true,
+		"noImplicitOverride": true,
+		"noFallthroughCasesInSwitch": true,
+		"forceConsistentCasingInFileNames": true,
+		"skipLibCheck": true,
+
+		/* Only Node globals; this code never runs in a browser. */
+		"types": ["node"],
+		"baseUrl": ".",
+		"paths": {
+			"@/*": ["./*"]
+		}
+	},
+	"include": ["lib/**/*.ts", "prisma/**/*.ts", "types/**/*.ts"],
+	"exclude": ["node_modules", "dist", ".next", "app"]
+}

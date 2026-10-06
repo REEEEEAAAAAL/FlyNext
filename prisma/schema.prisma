@@ -1,0 +1,185 @@
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "linux-musl-openssl-3.0.x"]
+}
+
+datasource db {
+  provider  = "postgresql"
+  url  	    = env("DATABASE_URL")
+}
+
+enum BookingStatus {
+  DRAFT
+  CONFIRMED
+  CANCELLED
+}
+
+model User {
+  id                 Int                 @id @default(autoincrement())
+  email              String              @unique
+  password           String
+  firstName          String
+  lastName           String
+  profilePic         String?
+  phone              String?
+  IsHotelOwner       Boolean             @default(false)
+  hotels             Hotel[]
+  hotelReservations  HotelReservation[]
+  flightReservations FlightReservation[]
+  itineraries        Itinerary[]
+  notifications      Notification[]
+}
+
+model Hotel {
+  id           Int                @id @default(autoincrement())
+  name         String
+  logo         String // store picture url
+  address      String // store street and zip code
+  location     String // store city and country
+  starRating   Int
+  images       Json // store picture urls
+  owner        User?              @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  ownerId      Int?
+  roomTypes    RoomType[]
+  reservations HotelReservation[]
+}
+
+model RoomType {
+  id                  Int                      @id @default(autoincrement())
+  name                String
+  amenities           String?
+  pricePerNight       Float
+  images              Json // JSON string
+  currentAvailability Int
+  hotel               Hotel                    @relation(fields: [hotelId], references: [id], onDelete: Cascade)
+  hotelId             Int
+  availabilityRecord  RoomAvailabilityRecord[]
+  reservations        HotelReservation[]
+}
+
+model RoomAvailabilityRecord {
+  id           Int      @id @default(autoincrement())
+  date         DateTime
+  availability Int
+  RoomType     RoomType @relation(fields: [roomTypeId], references: [id], onDelete: Cascade)
+  roomTypeId   Int
+
+  // One row per room type per night. Every read and every conditional decrement
+  // addresses a single night, so a second row for the same date would silently
+  // double-count availability and let a booking claim more rooms than exist.
+  @@unique([roomTypeId, date])
+}
+
+model HotelReservation {
+  id          Int           @id @default(autoincrement())
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int
+  itinerary   Itinerary?    @relation(fields: [itineraryId], references: [id])
+  itineraryId Int?          @unique
+  hotel       Hotel?        @relation(fields: [hotelId], references: [id], onDelete: SetNull)
+  hotelId     Int?
+  roomType    RoomType?     @relation(fields: [roomTypeId], references: [id], onDelete: SetNull)
+  roomTypeId  Int?
+  checkIn     DateTime
+  checkOut    DateTime
+  price       Float
+  status      BookingStatus @default(CONFIRMED)
+  createdAt   DateTime      @default(now())
+
+  // Booking history reads the traveller's own rows, newest stay first.
+  @@index([userId, checkIn])
+  @@index([roomTypeId, checkIn])
+}
+
+model FlightReservation {
+  id           Int           @id @default(autoincrement())
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId       Int
+  itinerary    Itinerary?    @relation(fields: [itineraryId], references: [id])
+  itineraryId  Int?          @unique
+  // AFS's own booking id, and the key `retrieve`/`cancel` authorise with. The
+  // passenger-facing reference is only this value's first six characters, so
+  // storing the short form makes a booking impossible to verify or cancel.
+  afsBookingId String        @unique
+  departure    Json // { date: DateTime, airport: String }
+  arrival      Json // { date: DateTime, airport: String }
+  price        Float
+  status       BookingStatus @default(CONFIRMED)
+  createdAt    DateTime      @default(now())
+
+  @@index([userId, createdAt])
+}
+
+model Itinerary {
+  id          Int                @id @default(autoincrement())
+  user        User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId      Int
+  flight      FlightReservation?
+  hotel       HotelReservation?
+  totalPrice  Float
+  status      BookingStatus      @default(CONFIRMED)
+  cardNumber  String // Last 4 digits only for security
+  cardExpiry  String
+  bookingDate DateTime           @default(now())
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId    Int
+  content   String
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  // The unread badge is polled on a timer and counts exactly this pair.
+  @@index([userId, isRead])
+}
+
+// Durable state for the in-process AFS provider (`lib/afs/offline.ts`).
+//
+// The provider is a substitute for a separate service, so it keeps its bookings
+// in the shared place every instance can read rather than in the worker's
+// memory. That memory is not one place: search and booking are different
+// invocations, frequently on different workers, so a booking held by one is
+// "Booking not found" for the next. This table is where the provider writes a
+// booking and reads it back from, by the same key `retrieve` and `cancel`
+// authorise with.
+//
+// It is deliberately separate from `FlightReservation`: that row belongs to
+// FlyNext and is written after the provider has answered, so it cannot represent
+// a booking whose local write failed — which is exactly the booking the
+// compensation path has to be able to cancel.
+model AfsOfflineBooking {
+  // The provider's booking id, which is also the passenger-facing reference's
+  // source (its first six characters) and the key retrieve/cancel accept.
+  id             String        @id
+  firstName      String
+  lastName       String
+  email          String
+  passportNumber String
+  status         BookingStatus @default(CONFIRMED)
+  // The itinerary as a JSON array of flight ids, in departure order.
+  flightIds      Json
+  createdAt      DateTime      @default(now())
+
+  // A cancellation looks the row up by id, and the seat count subtracts the live
+  // bookings that contain a flight.
+  @@index([status])
+}
+
+model City {
+  id       Int       @id @default(autoincrement())
+  name     String
+  country  String
+  airports Airport[]
+}
+
+model Airport {
+  id         Int    @id @default(autoincrement())
+  externalId String @unique // id from AFS API
+  code       String @unique // e.g. "PEK"
+  name       String
+  country    String
+  city       City?  @relation(fields: [cityId], references: [id])
+  cityId     Int?
+}

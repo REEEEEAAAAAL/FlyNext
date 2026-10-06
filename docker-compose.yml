@@ -1,0 +1,99 @@
+version: '3.8'
+
+services:
+  nextjs:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
+      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
+      - JWT_ACCESS_TOKEN_EXPIRY_TIME=${JWT_ACCESS_TOKEN_EXPIRY_TIME}
+      - JWT_REFRESH_TOKEN_EXPIRY_TIME=${JWT_REFRESH_TOKEN_EXPIRY_TIME}
+      - AFS_API_KEY=${AFS_API_KEY}
+      # `docker compose --profile afs up -d` starts the bundled AFS container; to
+      # use it, put AFS_BASE_URL=http://afs:3000 in .env (using the service alias
+      # rather than localhost, which inside this network is the container itself).
+      # Left empty, the app uses its built-in offline provider instead. It is
+      # never defaulted to the container address, because a service that is not
+      # running would then be indistinguishable from one that is misbehaving.
+      - AFS_BASE_URL=${AFS_BASE_URL:-}
+      - AFS_MOCK=${AFS_MOCK:-}
+    volumes:
+      - uploads-volume:/app/public/uploads
+    depends_on:
+      - postgres
+    restart: always
+
+  # ---------------------------------------------------------------------------
+  # Local Advanced Flights System (AFS) — optional.
+  #
+  # This service runs the upstream project (https://github.com/Kianoosh76/afs)
+  # from source, with its own PostgreSQL database and a generated schedule, so
+  # the flight search, booking and refund flows work against a real provider.
+  #
+  # Behind a profile, so a plain `docker compose up` starts only the FlyNext
+  # stack and the built-in offline provider remains the default:
+  #
+  #   docker compose --profile afs up -d
+  #
+  # The API key it accepts is the sha-256 of AFS_LOCAL_AGENCY; the same value has
+  # to be in AFS_API_KEY. See .env.example.
+  # ---------------------------------------------------------------------------
+  afs:
+    profiles: ["afs"]
+    build:
+      context: .
+      dockerfile: dockerfile.afs
+    ports:
+      - "4000:3000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-flynextdb_owner}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@afs-postgres:5432/afsdb
+      - AFS_LOCAL_AGENCY=${AFS_LOCAL_AGENCY:-flynext-local}
+      - AFS_SEED_DAYS=${AFS_SEED_DAYS:-7}
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      afs-postgres:
+        condition: service_healthy
+    restart: always
+
+  afs-postgres:
+    profiles: ["afs"]
+    image: postgres:15-alpine
+    # No published port: the AFS database is only reachable from the compose
+    # network, which keeps it from colliding with the FlyNext database on 5432.
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-flynextdb_owner}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      - POSTGRES_DB=afsdb
+    volumes:
+      - afs_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-flynextdb_owner} -d afsdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: always
+
+  postgres:
+    image: postgres:15-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      # Sourced from the .env file that docker-compose reads automatically, so no
+      # database credential is ever committed to this file.
+      - POSTGRES_USER=${POSTGRES_USER:-flynextdb_owner}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      - POSTGRES_DB=${POSTGRES_DB:-flynextdb}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  postgres_data:
+  uploads-volume:
+  afs_postgres_data:

@@ -1,0 +1,540 @@
+@import "tailwindcss";
+
+/*
+ * Tailwind CSS 4 ships a `dark:` variant that follows `prefers-color-scheme`
+ * only, not a class on <html>. Re-registering the variant here is what makes
+ * `class="dark"` (and therefore the Light / Dark / System preference in
+ * ThemeProvider) actually drive every `dark:` utility in the app.
+ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Design tokens
+ * ---------------------------------------------------------------------------
+ * Light mode keeps the established palette byte-for-byte, so nothing about the
+ * light appearance shifts. Dark mode is a layered, non-black palette:
+ *
+ *   canvas  zinc-950  #09090b  -> page background, never pure #000
+ *   surface zinc-900  #18181b  -> cards, panels, navbar
+ *   raised  zinc-800  #27272a  -> raised cards, inputs, dropdowns, modals
+ *   line    white/10           -> hairline separators replacing light shadows
+ *
+ * Text contrast against the dark canvas, measured:
+ *   --text            #F4F4F5 on #09090B = 18.1:1  (AAA)
+ *   --text-secondary  #D4D4D8 on #09090B = 13.5:1  (AAA)
+ *   --text-muted      #A1A1AA on #09090B =  7.8:1  (AAA)
+ *   --text-subtle     #8B8B94 on #09090B =  5.9:1  (AA)
+ * Every tier clears AA on the dark canvas: the light-mode `#4B5563` grey
+ * measures only 2.6:1 there and cannot carry dark-mode text.
+ *
+ * `--text-subtle` is the lowest emphasis level, and it holds at or above AA in
+ * both themes so anything that reaches for it is legible rather than invisible.
+ * The light canvas has no room for a distinct fourth step that
+ * clears 4.5:1 — gray-400 (`#9CA3AF`) measures 2.31:1 — so light mode collapses
+ * the tier onto `--text-muted` (`#6B7280`, 4.39:1 on the canvas, 4.83:1 on a
+ * white card) instead of shipping an unusable step; dark mode keeps a real step
+ * at 5.9:1. Placeholders use `--text-muted`: 4.83:1 on the light input and
+ * 6.41:1 on the dark one.
+ *
+ * That is a floor rather than a preference: a token named "subtle" is exactly the
+ * one a page reaches for when it wants de-emphasised metadata, so dropping below
+ * AA here would make that metadata unreadable for anyone.
+ */
+:root {
+  color-scheme: light;
+
+  --background: #f3f4f6;
+
+  --text: #4b5563;
+  --text-secondary: #4b5563;
+  --text-muted: #6b7280;
+  --text-subtle: #6b7280;
+
+  /* Dark-only helpers, mirrored below so utilities can stay semantic. */
+  --dark-surface: #18181b;
+  --dark-raised: #27272a;
+
+  /*
+   * Chart.js tokens.
+   *
+   * Chart.js paints into a <canvas>, where `dark:` utilities and the CSS cascade
+   * do not reach: every grid line, tick and tooltip colour has to be handed to
+   * it from JavaScript. So the palette lives here as `R G B / A` tokens that are
+   * read at render time and converted to `rgba(...)`, which keeps one chart
+   * config correct in both themes with no re-creation on toggle — and lets the
+   * dark grid be a real translucent hairline, which a Tailwind class cannot
+   * express inside the canvas.
+   *
+   * Values must stay in the "R G B / A" form — the alpha is optional, but both
+   * the spaces and the `/` matter: `formatChartRgb` in
+   * `hotels/[hotelId]/room-types/[roomTypeId]/edit/page.tsx` parses exactly
+   * that, and silently falls back to the light palette if the shape changes.
+   */
+  --chart-grid: 229 231 235 / 1; /* gray-200 */
+  --chart-tick: 75 85 99 / 1; /* gray-600 — 7.6:1 on white */
+  --chart-title: 17 24 39 / 1; /* gray-900 */
+  --chart-legend: 55 65 81 / 1; /* gray-700 */
+  --chart-line: 13 148 136 / 1; /* teal-600 — 4.1:1 on white */
+  --chart-tooltip-bg: 255 255 255 / 0.98;
+  --chart-tooltip-title: 17 24 39 / 1;
+  --chart-tooltip-body: 55 65 81 / 1;
+  --chart-tooltip-border: 229 231 235 / 1;
+}
+
+.dark {
+  color-scheme: dark;
+
+  --background: #09090b;
+
+  --text: #f4f4f5;
+  --text-secondary: #d4d4d8;
+  --text-muted: #a1a1aa;
+  --text-subtle: #8b8b94;
+
+  /* Chart.js tokens — see the `:root` block for the token format contract. */
+  --chart-grid: 255 255 255 / 0.08;
+  --chart-tick: 161 161 170 / 1; /* zinc-400 — 7.8:1 on zinc-950 */
+  --chart-title: 244 244 245 / 1; /* zinc-100 */
+  --chart-legend: 212 212 216 / 1; /* zinc-300 */
+  --chart-line: 45 212 191 / 1; /* teal-400 — 9.8:1 on zinc-900 */
+  --chart-tooltip-bg: 39 39 42 / 0.98; /* zinc-800, matches `floating` */
+  --chart-tooltip-title: 244 244 245 / 1;
+  --chart-tooltip-body: 212 212 216 / 1;
+  --chart-tooltip-border: 255 255 255 / 0.12;
+}
+
+/*
+ * Paint the canvas on <html> as well as <body>: while the paint is in flight
+ * (and behind rubber-band scrolling on mobile) the browser would otherwise
+ * expose the white default, which is exactly the flash seen on refresh.
+ */
+html {
+  background-color: var(--background);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--text);
+  font-family:
+    ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer base {
+  /*
+   * Native controls (date pickers, spinners, autofill, scrollbars) follow
+   * `color-scheme`, set above. The declarations below keep hand-styled inputs
+   * readable when a component forgets its own dark styles.
+   */
+  input,
+  select,
+  textarea {
+    color: inherit;
+  }
+
+  /*
+   * Placeholders use `--text-muted`, not `--text-subtle`: a placeholder is
+   * legitimately the lowest-contrast text on the page, but at the 0.875rem the
+   * `field` utility renders it would fail WCAG AA on the light input if it kept
+   * the subtle token (2.5:1 on white). Muted measures 4.83:1 on the light input
+   * and 6.41:1 on the dark one, so hints stay clearly secondary while remaining
+   * readable.
+   */
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--text-muted);
+    opacity: 1;
+  }
+
+  /*
+   * Native `<option>` lists are painted by the OS, not by Tailwind. Chromium
+   * honours an explicit background here, Firefox follows `color-scheme`, and
+   * setting both keeps the two from disagreeing.
+   */
+  .dark option {
+    background-color: var(--dark-raised);
+    color: var(--text);
+  }
+
+  :focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 2px;
+  }
+
+  /* Autofill in WebKit ignores background-color; force the dark surface. */
+  .dark input:-webkit-autofill,
+  .dark input:-webkit-autofill:hover,
+  .dark input:-webkit-autofill:focus {
+    -webkit-text-fill-color: var(--text);
+    box-shadow: 0 0 0 1000px var(--dark-raised) inset;
+    caret-color: var(--text);
+  }
+
+  /* Only the scrollbar, not the layout, changes with the theme. */
+  .dark ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .dark ::-webkit-scrollbar-track {
+    background: #18181b;
+  }
+
+  .dark ::-webkit-scrollbar-thumb {
+    background: #3f3f46;
+    border-radius: 9999px;
+  }
+
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: #52525b;
+  }
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Shared component primitives
+ * ---------------------------------------------------------------------------
+ * Repeated across ~20 pages, so they live here instead of being copy-pasted as
+ * long `dark:` chains. Light values reproduce the established light palette.
+ */
+
+/* Page-level card: white panel on the grey canvas. */
+@utility card {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  box-shadow:
+    0 1px 3px 0 rgb(0 0 0 / 0.1),
+    0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+
+.dark .card {
+  background-color: var(--dark-surface);
+  border-color: rgb(255 255 255 / 0.1);
+  /* Elevation in dark mode comes from a lighter surface + hairline border, not
+     from a black drop shadow that would be invisible against the canvas. */
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+}
+
+/* Interactive card: lifts on hover. */
+@utility card-interactive {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.75rem;
+  box-shadow:
+    0 1px 3px 0 rgb(0 0 0 / 0.1),
+    0 1px 2px -1px rgb(0 0 0 / 0.1);
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.card-interactive:hover {
+  background-color: #f9fafb;
+}
+
+.dark .card-interactive {
+  background-color: var(--dark-surface);
+  border-color: rgb(255 255 255 / 0.1);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.5);
+}
+
+.dark .card-interactive:hover {
+  background-color: #1f1f23;
+  border-color: rgb(255 255 255 / 0.18);
+}
+
+/* Inner surface: list rows, nested panels, dropdown menus inside a card. */
+@utility surface {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+}
+
+.dark .surface {
+  background-color: var(--dark-raised);
+  border-color: rgb(255 255 255 / 0.1);
+}
+
+/* Hairline divider used where a light theme would lean on a shadow. */
+@utility divider {
+  border-color: #e5e7eb;
+}
+
+.dark .divider {
+  border-color: rgb(255 255 255 / 0.1);
+}
+
+/* Form control. Focus ring is blue in both themes but off-set by the surface. */
+@utility field {
+  display: block;
+  width: 100%;
+  border-radius: 0.5rem;
+  border: 1px solid #d1d5db;
+  background-color: #ffffff;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: var(--text);
+  transition:
+    border-color 150ms ease,
+    background-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+.field::placeholder {
+  color: #6b7280; /* --text-muted; 4.83:1 on white */
+}
+
+.field:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgb(59 130 246 / 0.35);
+}
+
+.dark .field {
+  background-color: #1f1f23;
+  border-color: rgb(255 255 255 / 0.14);
+  color: var(--text);
+}
+
+.dark .field::placeholder {
+  color: var(--text-muted); /* 6.41:1 on the #1f1f23 input surface */
+}
+
+.dark .field:focus {
+  border-color: #60a5fa;
+  box-shadow: 0 0 0 3px rgb(96 165 250 / 0.3);
+}
+
+/* Select needs its own chevron so the native arrow stays visible on dark. */
+.dark select.field {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%23a1a1aa' stroke-width='2'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.6rem center;
+  background-size: 1rem 1rem;
+  padding-right: 2.25rem;
+  appearance: none;
+}
+
+/* Checkbox / radio swapped to the accent colour on dark surfaces. */
+.dark input[type="checkbox"],
+.dark input[type="radio"] {
+  accent-color: #3b82f6;
+  background-color: #1f1f23;
+  border-color: rgb(255 255 255 / 0.2);
+}
+
+/* Field label. */
+@utility label {
+  display: block;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.dark .label {
+  color: var(--text-secondary);
+}
+
+/* Overlay for modals and drawers. */
+@utility backdrop {
+  background-color: rgb(17 24 39 / 0.5);
+}
+
+.dark .backdrop {
+  background-color: rgb(0 0 0 / 0.72);
+  backdrop-filter: blur(2px);
+}
+
+/* Floating layer: dropdown menu, popover, modal panel, toast. */
+@utility floating {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  color: var(--text);
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.dark .floating {
+  background-color: var(--dark-raised);
+  border-color: rgb(255 255 255 / 0.12);
+  color: var(--text);
+  /* A dark shadow alone is invisible on a dark canvas; the border carries the
+     edge and the shadow only adds depth. */
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.7),
+    0 0 0 1px rgb(255 255 255 / 0.04);
+}
+
+/* Row/tab hover highlight used inside menus and lists. */
+@utility row-hover {
+  transition: background-color 120ms ease;
+}
+
+.row-hover:hover {
+  background-color: #f3f4f6;
+}
+
+.dark .row-hover:hover {
+  background-color: rgb(255 255 255 / 0.06);
+}
+
+/* Table shell. */
+@utility table-shell {
+  background-color: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.dark .table-shell {
+  background-color: var(--dark-surface);
+  border-color: rgb(255 255 255 / 0.1);
+}
+
+@utility table-head {
+  background-color: #f9fafb;
+  color: #374151;
+}
+
+.dark .table-head {
+  background-color: rgb(255 255 255 / 0.04);
+  color: var(--text-secondary);
+}
+
+@utility table-divide {
+  border-color: #e5e7eb;
+}
+
+.dark .table-divide {
+  border-color: rgb(255 255 255 / 0.08);
+}
+
+/* Muted copy that must stay legible on both canvases. */
+@utility muted {
+  color: #4b5563;
+}
+
+.dark .muted {
+  color: var(--text-muted);
+}
+
+@utility heading {
+  color: #111827;
+}
+
+.dark .heading {
+  color: var(--text);
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Motion primitives
+ * ---------------------------------------------------------------------------
+ * The toast stack and the confirmation dialog are the only two overlays that
+ * animate, so their keyframes live here rather than inline. Every one of them is
+ * wrapped in a `prefers-reduced-motion` guard below: a vestibular-sensitive user
+ * gets the same elements with the animation removed, not a hijacked setting.
+ *
+ * `toast-in` slides down from above the top edge, which is the direction the
+ * stack occupies, so a new toast appears to come from off-screen rather than
+ * growing out of the middle of the page. `toast-out` reverses it.
+ */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-0.85rem) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toast-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-0.6rem) scale(0.97);
+  }
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.75rem) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* The indeterminate bar under a toast whose work is still in flight. */
+@keyframes toast-progress {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.animate-toast-in {
+  animation: toast-in 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-toast-out {
+  animation: toast-out 200ms ease-in both;
+}
+
+.animate-overlay-in {
+  animation: overlay-in 180ms ease-out both;
+}
+
+.animate-panel-in {
+  animation: panel-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/*
+ * The lifetime bar is driven by the same duration the provider uses to schedule
+ * dismissal, so the bar reaching zero and the toast leaving are one event rather
+ * than two that merely tend to agree.
+ */
+.toast-lifetime {
+  transform-origin: left;
+  animation: toast-progress linear both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-toast-in,
+  .animate-toast-out,
+  .animate-overlay-in,
+  .animate-panel-in,
+  .toast-lifetime {
+    animation: none;
+  }
+}

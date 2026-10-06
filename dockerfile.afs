@@ -1,0 +1,80 @@
+# Local Advanced Flights System (AFS) service.
+#
+# AFS (https://github.com/Kianoosh76/afs) is a separate Next.js application with
+# its own PostgreSQL database. This image builds a private instance of it from the
+# pinned upstream commit. It is started through the `afs` service in
+# docker-compose.yml, behind the `afs` profile:
+#
+#   docker compose --profile afs up -d
+#
+# The upstream repository is fetched at build time rather than vendored, so this
+# project's tree stays its own and the version is pinned by one variable below.
+# Change AFS_REF to move to another revision or branch.
+#
+# The resulting service speaks exactly the API contract `lib/afs-client.ts`
+# already validates, which is why no client code is conditional on which back end
+# is in use.
+
+ARG NODE_VERSION=20-alpine
+
+# --------------------------------------------------------------------------
+# Fetch the upstream sources
+# --------------------------------------------------------------------------
+FROM ${NODE_VERSION} AS source
+
+ARG AFS_REF=main
+ARG AFS_REPO=https://github.com/Kianoosh76/afs.git
+
+RUN apk add --no-cache git
+
+WORKDIR /src
+# `--depth 1` keeps the context to a checkout: the upstream history is not needed
+# to run it. Pinning AFS_REF to a commit would make the build fully reproducible.
+RUN git clone --depth 1 --branch "${AFS_REF}" "${AFS_REPO}" .
+
+# --------------------------------------------------------------------------
+# Runtime
+# --------------------------------------------------------------------------
+FROM ${NODE_VERSION} AS runner
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV PORT=3000
+ENV HOSTNAME=0.0.0.0
+
+# Production dependencies only. The upstream project ships its own lockfile, so
+# `npm ci` runs against that.
+COPY --from=source /src/package.json /src/package-lock.json ./
+RUN npm ci --omit=dev
+
+# The generated Prisma client is built from the schema, so it has to come after
+# the install and before the application is copied.
+COPY --from=source /src/prisma ./prisma
+RUN npx prisma generate
+
+COPY --from=source /src/next.config.mjs /src/next-env.d.ts /src/tsconfig.json ./
+COPY --from=source /src/app ./app
+COPY --from=source /src/middlewares ./middlewares
+COPY --from=source /src/utils ./utils
+
+# Build the Next.js application. The dev dependencies it needs (TypeScript and the
+# React/Node type packages) are added for the build only and pruned again
+# afterwards, so they do not end up in the runtime image. Prisma is a runtime
+# dependency, which is why `prisma migrate deploy` still works in the entrypoint
+# — and `prisma generate` runs again because the prune can drop its generated
+# client from `node_modules`.
+RUN npm install --no-save --no-package-lock typescript @types/node @types/react @types/react-dom \
+	&& npx next build \
+	&& npm prune --omit=dev \
+	&& npx prisma generate \
+	&& rm -rf .next/cache
+
+# Entrypoint: migrate, seed once, then serve. Kept as a script so the same image
+# can be restarted without re-seeding.
+COPY afs/docker-entrypoint.sh /usr/local/bin/afs-entrypoint.sh
+COPY afs/seed-flights.mjs /usr/local/bin/afs-seed-flights.mjs
+RUN chmod +x /usr/local/bin/afs-entrypoint.sh
+
+EXPOSE 3000
+ENTRYPOINT ["/usr/local/bin/afs-entrypoint.sh"]
