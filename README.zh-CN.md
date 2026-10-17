@@ -215,6 +215,8 @@ URL 形状一致 —— 这样只断言"返回了新的图片地址"的用例无
 
 ## 快速开始
 
+开发与数据库安全规则见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)。演示 reset seed 会删除数据，只允许显式授权的本地临时库；初始参考数据使用 `seed:reference`。
+
 ### 前置条件
 
 - Node.js 20 或更高版本
@@ -241,7 +243,7 @@ cp .env.example .env
 ```bash
 npm run prisma:generate   # 生成 Prisma Client
 npm run prisma:migrate    # 应用迁移
-npm run seed              # 导入城市、机场与演示数据（仅限可随意丢弃的库）
+npm run seed:reference   # 增量参考数据，执行前核对目标数据库
 ```
 
 ### 4. 启动
@@ -294,11 +296,12 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 | `npm start` | 运行生产构建产物 |
 | `npm run build:server` | 用 `tsc` 把 `lib/`、`types/` 与 `prisma/` 单独编译到 `dist/`（可直接运行的 CommonJS） |
 | `npm run typecheck` | 对应用与测试代码做类型检查 |
-| `npm test` | 单次运行集成测试 |
-| `npm run test:watch` | 以监听模式运行测试 |
+| `npm test` | 运行纯单元测试（默认不连接数据库） |
+| `npm run test:watch` | 监听模式运行纯单元测试 |
+| `npm run test:integration` | 仅对已验证的专用本地库运行集成测试 |
 | `npm run seed` | 导入**演示/重置夹具**（`tsx prisma/seed.ts`）——先清空相关表，再重建 50 个演示用户、酒店、订单与行程 |
 | `npm run seed:reference` | 导入**生产参考数据**（`tsx prisma/seed-reference.ts`）——只新增城市、机场、酒店、房型及其按晚可用量，不删除任何数据 |
-| `npm run seed:prod` | 运行已编译的演示夹具（`node dist/prisma/seed.js`） |
+| `npm run seed:prod` | 先重新编译服务端，再运行受保护的演示夹具（禁止用于生产数据） |
 | `npm run seed:reference:prod` | 运行已编译的参考数据播种（`node dist/prisma/seed-reference.js`） |
 | `npm run prisma:generate` | 重新生成 Prisma Client |
 | `npm run prisma:migrate` | 应用待执行的迁移（`prisma migrate deploy`） |
@@ -317,29 +320,33 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 ## 测试与验证
 
-集成测试连接的是**真实**数据库，因为它覆盖的行为 —— 带条件的库存扣减、唯一约束、交互式
-事务 —— 只存在于那里。它使用自己的临时数据库，而不是开发库：
+`npm test` / `npm run test:unit` 默认只运行纯单元测试，不加载环境文件，不连接数据库。
+
+集成测试会迁移并清空数据，只允许使用新建、明确可清空的专用本地数据库。
+现有 `.env` / `.env.test` 不会被集成测试加载。安装本机 PostgreSQL 工具后：
 
 ```bash
-cp .env.example .env.test
-# 然后把 .env.test 里的 DATABASE_URL 指向一个临时库，例如 .../flynext_test
-npm test
+npm run test:db:start
+npm run test:db:check
+npm run test:integration
+npm run test:db:stop
 ```
 
-该数据库名**必须**以 `_test` 结尾。测试会在用例之间清空它用到的表，并拒绝在其它数据库上
-启动，因此不可能误伤开发库。首次运行时迁移会自动应用。
+工具生成被忽略的 `.env.test.local` 和 `.local-test-db/`，随机凭据仅存于本机。
+执行前同时验证非生产环境、显式清空许可、回环地址、专用端口/账号/库名及数据库身份标记。
+仅有 `_test` 后缀不足以证明安全。无法建立隔离环境时，禁止改用远程数据库。
 
-测试覆盖并发下的超卖防护、房型容量与按晚库存、航班下单的一致性与补偿、订座记录的方向、
-订座列表及其渲染、上传目录的处理、输入校验、鉴权边界、限流，以及内置航班服务商的契约。
+完整工作流、危险 seed 防护及命令见 [开发说明](docs/DEVELOPMENT.md)；
+当前安全部署指引见 [部署说明](docs/DEPLOYMENT.md)。
 
-### 验证闸门
-
-提交 Pull Request 或推送前，请跑通以下三道关卡：
+### 验证门槛
 
 ```bash
-npm run typecheck   # 0 error
-npm test            # 全部通过
-npm run build       # 生产构建成功
+npm run typecheck
+npm test
+npm run build
+# 仅在专用本地测试库启动并验证后执行：
+npm run test:integration
 ```
 
 ---
@@ -388,8 +395,8 @@ npm run build       # 生产构建成功
 | 其余情况 | 远程服务 |
 
 只有 `http`/`https` 地址才算数，`https://afs.invalid` 这类文档中的占位地址会被视为
-**未配置**而不会被真正请求。这正是 CI 在没有服务的情况下依然能通过的原因：`.env.test`
-同时设置了 `AFS_MOCK=true` **和**占位地址，因此即便标志被删除，测试也不可能打到真实服务。
+**未配置**而不会被真正请求。集成测试 setup 强制使用内置 AFS 并清空远程地址和 Key，
+不会加载现有的 `.env.test`。
 
 远程调用还要求 `AFS_API_KEY`；缺少它时调用会以 `502` 失败，而不会悄悄改用内置服务商。
 `AFS_MOCK=false` 表达的是"要走 HTTP"的意图，但它无法提供地址：当 `AFS_BASE_URL` 缺失或
@@ -566,7 +573,7 @@ Development）都要勾选。键名必须完全一致。
   契约。只有当部署环境确实能访问该地址时才填写 —— 本地容器并不满足这一条件，除非它被发布到了
   公网。
 - `CLOUDINARY_URL` 是第 9–11 项的**替代写法**，不是补充项。二者选其一即可；若同时存在，
-  以三个独立变量为准。
+  当前代码以可用的 CLOUDINARY_URL 为准，建议只选一种形式。
 - 用 `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` 生成 JWT
   密钥，切勿把开发环境的取值复用到生产。
 - 在 Neon 的**连接池**（pooler）主机上，连接串必须保留 `sslmode=require`；漏掉它通常是构建
@@ -654,8 +661,9 @@ npx prisma migrate status
 
 ### 推送到 GitHub
 
-`.env` 与 `.env.test` 都已被 Git 忽略，因此密钥不可能经由它们进入仓库。`.env.example`
-是唯一会被提交的环境文件，其中必须只保留占位符 —— 首次推送前请先 `git status` 确认。
+`.env`、`.env.test` 与生成的 `.env.test.local` 均被 Git 忽略，但强制添加或复制到其他文件仍可能泄漏。
+只有 `.env.example`、`.env.test.example` 是受版本管理的模板，必须只保留占位符；提交前核对
+`git status` 与暂存 Diff。
 
 ---
 

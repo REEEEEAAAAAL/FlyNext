@@ -252,6 +252,8 @@ which lets the test suite pin the built-in provider without any module stubbing.
 
 ## Getting started
 
+See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for safe setup. The demo reset seed deletes data and requires an explicitly opted-in disposable local database; use `seed:reference` for initial reference data.
+
 ### Prerequisites
 
 - Node.js 20 or newer
@@ -279,7 +281,7 @@ source, the Dockerfile, or `docker-compose.yml`. Every variable is documented in
 ```bash
 npm run prisma:generate   # generate the Prisma client
 npm run prisma:migrate    # apply migrations
-npm run seed              # load cities, airports and demo data (disposable DB only)
+npm run seed:reference   # additive reference data; review the intended target first
 ```
 
 ### 4. Run
@@ -332,11 +334,12 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 | `npm start` | Serve the production build |
 | `npm run build:server` | Standalone `tsc` emit of `lib/`, `types/` and `prisma/` into `dist/` as runnable CommonJS |
 | `npm run typecheck` | Type-check the application and the test suite |
-| `npm test` | Run the integration suite once |
-| `npm run test:watch` | Run it in watch mode |
+| `npm test` | Run database-free unit tests |
+| `npm run test:watch` | Watch database-free unit tests |
+| `npm run test:integration` | Run integration tests on the verified disposable local database |
 | `npm run seed` | Load the **demo/reset fixture** (`tsx prisma/seed.ts`) — clears the tables, then rebuilds 50 demo users, hotels, bookings and itineraries |
 | `npm run seed:reference` | Load the **production reference data** (`tsx prisma/seed-reference.ts`) — adds cities, airports, hotels, room types and their nightly availability, deletes nothing |
-| `npm run seed:prod` | Run the compiled demo fixture (`node dist/prisma/seed.js`) |
+| `npm run seed:prod` | Rebuild server code, then run the guarded compiled demo fixture (never production data) |
 | `npm run seed:reference:prod` | Run the compiled reference seed (`node dist/prisma/seed-reference.js`) |
 | `npm run prisma:generate` | Regenerate the Prisma client |
 | `npm run prisma:migrate` | Apply pending migrations (`prisma migrate deploy`) |
@@ -355,36 +358,29 @@ Three scripts are run directly rather than through npm:
 
 ## Testing and verification
 
-The integration suite talks to a **real** database, because the behaviour it covers
-— conditional availability claims, unique constraints, interactive transactions —
-only exists there. It uses its own scratch database rather than the development
-one:
+`npm test` / `npm run test:unit` run database-free unit tests by default. They do not load environment files or connect to PostgreSQL.
+
+Integration tests migrate and clear data. Only a NEW, explicitly disposable local database is allowed; existing `.env` and `.env.test` are never loaded by this suite. With native PostgreSQL tools on PATH:
 
 ```bash
-cp .env.example .env.test
-# then set DATABASE_URL in .env.test to a scratch database, e.g. .../flynext_test
-npm test
+npm run test:db:start
+npm run test:db:check
+npm run test:integration
+npm run test:db:stop
 ```
 
-The name of that database **must** end in `_test`. The suite truncates the tables
-it uses between cases and refuses to start against anything else, so pointing it at
-the development database by accident is not possible. Migrations are applied
-automatically on the first run.
+The helper generates ignored `.env.test.local` and `.local-test-db/` with random local credentials. Setup verifies non-production context, explicit reset consent, loopback host, dedicated port/role/database and the database identity marker before migrations/TRUNCATE. A `_test` suffix alone is not sufficient. Never substitute a remote database if local setup is blocked.
 
-The suite covers oversell protection under concurrency, room capacity and nightly
-availability, flight booking consistency and compensation, the directions recorded
-on a reservation, booking listings and their rendering, upload folder handling,
-input validation, authorization boundaries, rate limiting, and the built-in flight
-provider's contract.
+See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for setup/reset safeguards and [DEPLOYMENT.md](docs/DEPLOYMENT.md) for current release instructions.
 
 ### Verification gates
 
-Run all three before opening a pull request or pushing:
-
 ```bash
-npm run typecheck   # 0 errors
-npm test            # all green
-npm run build       # production build succeeds
+npm run typecheck
+npm test
+npm run build
+# Only after starting and verifying the dedicated local database:
+npm run test:integration
 ```
 
 ---
@@ -439,9 +435,8 @@ precedence first:
 
 Only `http`/`https` URLs count, and documented placeholders such as
 `https://afs.invalid` count as *not configured* rather than being called. That is
-what keeps CI green without a service: `.env.test` sets `AFS_MOCK=true` **and** a
-placeholder URL, so the suite can never reach a real provider even if the flag is
-removed.
+what lets tests run without a remote service: integration setup forces built-in
+AFS and clears the remote address/key; it never loads the existing `.env.test`.
 
 A remote call additionally needs `AFS_API_KEY`; without it the call fails as `502`
 rather than quietly answering from the built-in provider. `AFS_MOCK=false` states
@@ -650,7 +645,7 @@ Points that are easy to get wrong:
   an address the deployment can actually reach — the local container is not one,
   unless it is published somewhere public.
 - `CLOUDINARY_URL` is an alternative to keys 9–11, not an addition. Set either the
-  three separate values or the single URL; the three win if both are present.
+  three separate values or the single URL; a usable CLOUDINARY_URL wins if both are present.
 - Generate the JWT secrets with
   `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"` and
   never reuse the development values in production.
@@ -755,9 +750,10 @@ holds the provider's own message.
 
 ### Pushing to GitHub
 
-`.env` and `.env.test` are git-ignored, so credentials cannot reach the repository
-through them. `.env.example` is the one env file that *is* committed and must
-contain placeholders only — check `git status` before the first push.
+`.env`, `.env.test` and generated `.env.test.local` are git-ignored. This reduces
+accidental staging but does not protect against force-add or secrets copied elsewhere.
+Only `.env.example` and `.env.test.example` are tracked templates; keep placeholders
+there and inspect `git status` and the staged diff before a commit.
 
 ---
 

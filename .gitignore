@@ -44,6 +44,7 @@ yarn-error.log*
 .env*
 # ...except the template, which is what a fresh clone copies from.
 !.env.example
+!.env.test.example
 
 # vercel
 .vercel
@@ -59,3 +60,6 @@ next-env.d.ts
 # previous values saved by scripts/repair-flight-directions.ts — booking data,
 # so it stays local
 repair-flight-directions.backup.json
+
+# Dedicated local PostgreSQL cluster, never application data
+/.local-test-db/

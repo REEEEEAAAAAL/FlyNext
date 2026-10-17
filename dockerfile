@@ -7,6 +7,8 @@ WORKDIR /app
 # Install dependencies only when needed
 FROM base AS deps
 COPY package.json package-lock.json ./
+# postinstall generates Prisma; its schema must exist before npm ci runs.
+COPY prisma ./prisma
 RUN npm ci
 
 # Build the app

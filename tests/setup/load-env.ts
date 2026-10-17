@@ -1,51 +1,27 @@
-/**
- * Load the test environment before any suite or handler module is imported.
- *
- * Node does not read `.env` files, and the application modules expect their
- * configuration to already be in `process.env` by the time they run (`lib/auth.ts`
- * reads its secrets lazily, but per call). Loading `.env.test` here — rather than
- * `.env` — is what keeps the suite off the development database: `next dev` and
- * the `prisma` scripts both load `.env`, so an accidental overlap would otherwise
- * be invisible.
- */
-
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { assertDisposableDatabase } from "../../lib/database-safety";
 import { loadEnvFile } from "./env-file";
 
-const envPath = resolve(process.cwd(), ".env.test");
-
-let loaded: Record<string, string>;
-try {
-	loaded = loadEnvFile(envPath);
-} catch {
-	throw new Error(
-		`Could not read ${envPath}. Copy .env.example to .env.test and point ` +
-			"DATABASE_URL at a scratch database whose name ends in _test."
-	);
+// Check before a file could overwrite deployment flags.
+if (process.env.NODE_ENV === "production" || process.env.VERCEL || process.env.VERCEL_ENV || process.env.NETLIFY || process.env.RENDER_SERVICE_ID) {
+	throw new Error("Integration tests are forbidden in a production/deployment environment.");
 }
-
-/** Suites that are not testing the limiter should not have to spend its budget. */
+const envPath = resolve(process.cwd(), ".env.test.local");
+try { readFileSync(envPath, "utf8"); }
+catch { throw new Error("Missing .env.test.local. Run npm run test:db:start; existing .env/.env.test are never used for integration tests."); }
+const loaded = loadEnvFile(envPath);
+// Consent/identity must be in this file, not inherited from an unrelated shell.
+const target = assertDisposableDatabase({ ...process.env, ...loaded,
+	DATABASE_URL: loaded.DATABASE_URL,
+	FLYNEXT_ALLOW_DATABASE_RESET: loaded.FLYNEXT_ALLOW_DATABASE_RESET,
+	FLYNEXT_TEST_DATABASE_ID: loaded.FLYNEXT_TEST_DATABASE_ID,
+}, "integration");
 process.env.RATE_LIMIT_DISABLED = "1";
-
-/** Fail loudly rather than silently reaching a database that holds real data. */
-const databaseUrl = loaded.DATABASE_URL ?? process.env.DATABASE_URL ?? "";
-const databaseName = /^postgresql:\/\/[^/]+\/([^?]+)/.exec(databaseUrl)?.[1] ?? "";
-
-/**
- * `true` when the configured database is a scratch database it is safe to wipe.
- *
- * A dedicated database rather than a dedicated schema inside the development one:
- * the test suite truncates tables, and a schema parameter is far too easy to drop
- * from a connection string by accident.
- */
-export const IsTestDatabase = databaseName.endsWith("_test");
-
-if (!IsTestDatabase) {
-	throw new Error(
-		`Refusing to run: DATABASE_URL points at "${databaseName || "unknown"}", ` +
-			"which does not end in _test."
-	);
-}
-
-/** Exposed for diagnostics when a suite cannot connect. */
-export const TEST_DATABASE_NAME = databaseName;
+// Integration tests never use real image credentials or a remote flight service.
+for (const key of ["CLOUDINARY_URL", "CLOUDINARY_CLOUD_NAME", "CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET"]) process.env[key] = "";
+process.env.AFS_MOCK = "true";
+process.env.AFS_BASE_URL = "";
+process.env.AFS_API_KEY = "";
+export const IsTestDatabase = true;
+export const TEST_DATABASE_NAME = target.name;

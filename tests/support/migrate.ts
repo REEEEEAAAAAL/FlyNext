@@ -24,6 +24,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { PrismaClient } from "@prisma/client";
 import { firstLine, splitSqlStatements } from "../../prisma/sql-script";
+import { verifyTestDatabase } from "./safety";
 
 /** One directory under `prisma/migrations`. */
 interface Migration {
@@ -85,6 +86,7 @@ async function appliedMigrations(prisma: PrismaClient): Promise<Set<string>> {
  * @returns the names of the migrations applied by this call.
  */
 export async function applyMigrations(prisma: PrismaClient): Promise<string[]> {
+	await verifyTestDatabase(prisma);
 	const migrations = readMigrations();
 	const applied = await appliedMigrations(prisma);
 	const pending = migrations.filter((migration) => !applied.has(migration.name));

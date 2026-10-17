@@ -12,7 +12,13 @@
  * the derived split used by a caller that only has `flightIds`.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+// These functions are pure. Prevent their module's unrelated infrastructure
+// imports from creating a Prisma client or loading developer environment files.
+vi.mock("@/lib/prisma", () => ({
+	prisma: new Proxy({}, { get() { throw new Error("Pure direction tests must not access Prisma."); } }),
+	DEFAULT_TRANSACTION_OPTIONS: {},
+}));
 import { buildFlightLegs, splitFlightDirections } from "@/lib/reservations";
 import type { AfsFlight } from "@/types";
 

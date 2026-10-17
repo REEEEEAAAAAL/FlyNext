@@ -9,7 +9,9 @@
  * the tables it uses.
  */
 
+import "../setup/load-env";
 import { PrismaClient } from "@prisma/client";
+import { verifyTestDatabase } from "./safety";
 import { resetLedgerReporting } from "@/lib/afs/ledger";
 import { resetBookingLedger } from "@/lib/afs/offline";
 
@@ -59,6 +61,7 @@ const TABLES_IN_DELETE_ORDER = [
  * `resetFlightRegistry()` for itself.
  */
 export async function resetDatabase(): Promise<void> {
+  await verifyTestDatabase(prisma);
   const list = TABLES_IN_DELETE_ORDER.map((table) => `"${table}"`).join(", ");
   await prisma.$executeRawUnsafe(
     `TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`

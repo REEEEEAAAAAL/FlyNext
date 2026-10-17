@@ -51,6 +51,7 @@ import { PrismaClient } from "@prisma/client";
 import { availabilityHorizon } from "../lib/api/validation";
 import { hashPassword } from "../lib/auth";
 import { firstLine, splitSqlStatements } from "./sql-script";
+import { assertDisposableDatabase } from "../lib/database-safety";
 import {
 	readSeedJson,
 	readSeedSql,
@@ -229,6 +230,8 @@ async function seedRoomAvailability(): Promise<number> {
 }
 
 async function main(): Promise<void> {
+	// Before the first query, for both tsx and compiled seed:prod.
+	assertDisposableDatabase(process.env, "seed");
 	// Airports reference cities, so children are cleared first.
 	await prisma.$transaction([
 		prisma.airport.deleteMany(),
@@ -257,7 +260,7 @@ async function main(): Promise<void> {
 
 main()
 	.catch((error: unknown) => {
-		console.error(error);
+		console.error(error instanceof Error ? error.message : "Demo seed failed (details redacted).");
 		process.exitCode = 1;
 	})
 	.finally(async () => {
