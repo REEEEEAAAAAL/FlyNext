@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect, FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -149,12 +151,12 @@ export default function EditRoomTypePage() {
     // Protect the page.
     useEffect(() => {
         const fetchData = async () => {
-            const token = localStorage.getItem("accessToken");
+            const token = getAccessToken();
             if (!token) {
                 router.push("/auth/login");
                 return;
             }
-            const response = await fetch("/api/user", {
+            const response = await sessionFetch("/api/user", {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (response.status === 401) {
@@ -229,8 +231,8 @@ export default function EditRoomTypePage() {
                 if (params) {
                     url += `?${params}`;
                 }
-                const token = localStorage.getItem("accessToken");
-                const res = await fetch(url, {
+                const token = getAccessToken();
+                const res = await sessionFetch(url, {
                     method: "GET",
                     headers: {
                         "Content-Type": "application/json",
@@ -238,10 +240,20 @@ export default function EditRoomTypePage() {
                     },
                 });
                 const data = await res.json();
+                const bookingResponse = await sessionFetch(`/api/hotels/${hotelId}/room-types/${roomTypeId}/reservations`, {
+                    headers: { Authorization: token ? `Bearer ${token}` : "" }, cache: "no-store",
+                });
+                if (!bookingResponse.ok) {
+                    setReservations([]);
+                    setError("Unable to load owner reservations. Sign in as the hotel owner.");
+                    return;
+                }
+                const bookingData = await bookingResponse.json();
+                setReservations(bookingData.reservations ?? []);
                 if (!res.ok) {
                     setError(data.error || "Failed to fetch room type data.");
                 } else {
-                    // Expected response: { roomType: { ... }, availabilityRecords: [...], reservations: [...] }
+                    // Public room/availability data; guest bookings were loaded separately above.
                     if (data.roomType) {
                         setFormData({
                             name: data.roomType.name || "",
@@ -266,9 +278,6 @@ export default function EditRoomTypePage() {
                     }
                     if (data.availabilityRecords) {
                         setAvailabilityRecords(data.availabilityRecords ?? []);
-                    }
-                    if (data.roomType && data.roomType.reservations) {
-                        setReservations(data.roomType.reservations);
                     }
                 }
             } catch (err) {
@@ -317,12 +326,12 @@ export default function EditRoomTypePage() {
         setError("");
         setSubmitting(true);
         try {
-            const token = localStorage.getItem("accessToken");
+            const token = getAccessToken();
             if (!token) {
                 router.push("/auth/login");
                 return;
             }
-            const response = await fetch("/api/user", {
+            const response = await sessionFetch("/api/user", {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (response.status === 401) {
@@ -347,7 +356,7 @@ export default function EditRoomTypePage() {
                     data.append("images", item.previewUrl);
                 }
             });
-            const res = await fetch(
+            const res = await sessionFetch(
                 `/api/hotels/${hotelId}/room-types/${roomTypeId}`,
                 {
                     method: "PUT",
@@ -408,12 +417,12 @@ export default function EditRoomTypePage() {
             params.append("checkOut", checkOut);
         }
         try {
-            const token = localStorage.getItem("accessToken");
+            const token = getAccessToken();
             let url = `/api/hotels/${hotelId}/room-types/${roomTypeId}`;
             if (params.toString()) {
                 url += `?${params.toString()}`;
             }
-            const res = await fetch(url, {
+            const res = await sessionFetch(url, {
                 method: "GET",
                 headers: {
                     "Content-Type": "application/json",
@@ -455,8 +464,8 @@ export default function EditRoomTypePage() {
 
         const pending = info("Cancelling the reservation…", { duration: 0 });
         try {
-            const token = localStorage.getItem("accessToken");
-            const res = await fetch(
+            const token = getAccessToken();
+            const res = await sessionFetch(
                 `/api/hotels/book?reservationId=${reservationId}`,
                 {
                     method: "DELETE",
@@ -487,7 +496,7 @@ export default function EditRoomTypePage() {
              * showing the nights as still sold and the owner cannot see the rooms
              * come back.
              */
-            const refreshed = await fetch(
+            const refreshed = await sessionFetch(
                 `/api/hotels/${hotelId}/room-types/${roomTypeId}`,
                 {
                     method: "GET",
@@ -506,9 +515,15 @@ export default function EditRoomTypePage() {
                 return;
             }
             const data2 = await refreshed.json();
-            if (data2.roomType && data2.roomType.reservations) {
-                setReservations(data2.roomType.reservations);
+            const bookings = await sessionFetch(`/api/hotels/${hotelId}/room-types/${roomTypeId}/reservations`, {
+                headers: { Authorization: token ? `Bearer ${token}` : "" }, cache: "no-store",
+            });
+            if (!bookings.ok) {
+                setReservations([]);
+                setError("The reservation was cancelled, but the guest list could not be refreshed. Reload the page.");
+                return;
             }
+            setReservations((await bookings.json()).reservations ?? []);
             if (Array.isArray(data2.availabilityRecords)) {
                 setAvailabilityRecords(data2.availabilityRecords);
             }
@@ -546,8 +561,8 @@ export default function EditRoomTypePage() {
 
         const pending = info("Deleting the room type…", { duration: 0 });
         try {
-            const token = localStorage.getItem("accessToken");
-            const res = await fetch(
+            const token = getAccessToken();
+            const res = await sessionFetch(
                 `/api/hotels/${hotelId}/room-types/${roomTypeId}`,
                 {
                     method: "DELETE",

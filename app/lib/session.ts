@@ -1,65 +1,82 @@
 "use client";
 
-/**
- * The access token in `localStorage`, and the change notification for it.
- *
- * The token is stored under its own key — every page reads it directly — but a
- * component that has to react to a new token cannot discover one by
- * reading it. `localStorage` fires a `storage` event only in the other tabs,
- * so a token acquired by `/auth/login` or `/auth/refresh` in this tab is
- * invisible to anything already mounted.
- *
- * That gap is what would leave the notification badge frozen: it stops polling on
- * a `401` (correctly — there is nothing to count without a session) and has no way
- * to learn that a session has come back, short of a full page reload. Writing the
- * token through {@link setAccessToken} publishes {@link ACCESS_TOKEN_EVENT} so
- * the badge, and anything else that needs it, can resume.
- */
-
-/** The `localStorage` key holding the JWT. */
-export const ACCESS_TOKEN_KEY = "accessToken";
-
-/** Fired on `window` whenever the access token is replaced or cleared. */
+/** Access credentials live only in memory; the refresh cookie is HttpOnly. */
 export const ACCESS_TOKEN_EVENT = "flynext:access-token";
-
-/** Notify listeners that the token changed. */
-function announce(): void {
-	window.dispatchEvent(new Event(ACCESS_TOKEN_EVENT));
+let accessToken: string | null = null;
+let refreshRequest: Promise<string | null> | null = null;
+let generation = 0;
+let loggedOut = false;
+function announce() {
+    if (typeof window !== "undefined") window.dispatchEvent(new Event(ACCESS_TOKEN_EVENT));
 }
-
-/** The current access token, or `null` when there is no session. */
-export function getAccessToken(): string | null {
-	if (typeof window === "undefined") {
-		return null;
-	}
-	return localStorage.getItem(ACCESS_TOKEN_KEY);
-}
-
-/** Store a freshly issued access token and notify listeners. */
+export function getAccessToken(): string | null { return accessToken; }
 export function setAccessToken(token: string): void {
-	localStorage.setItem(ACCESS_TOKEN_KEY, token);
-	announce();
+    accessToken = token; loggedOut = false; generation++;
+    try { localStorage.removeItem("accessToken"); } catch { /* storage may be disabled */ }
+    announce();
 }
-
-/** Drop the access token and notify listeners. */
 export function clearAccessToken(): void {
-	localStorage.removeItem(ACCESS_TOKEN_KEY);
-	announce();
+    accessToken = null; generation++;
+    try { localStorage.removeItem("accessToken"); } catch { /* storage may be disabled */ }
+    announce();
 }
-
-/**
- * Subscribe to token changes.
- *
- * The `storage` event is included so a sign-in in another tab also resumes this
- * one.
- *
- * @returns an unsubscribe function.
- */
+export function logoutLocally(): void { loggedOut = true; clearAccessToken(); }
 export function subscribeToAccessToken(listener: () => void): () => void {
-	window.addEventListener(ACCESS_TOKEN_EVENT, listener);
-	window.addEventListener("storage", listener);
-	return () => {
-		window.removeEventListener(ACCESS_TOKEN_EVENT, listener);
-		window.removeEventListener("storage", listener);
-	};
+    window.addEventListener(ACCESS_TOKEN_EVENT, listener);
+    return () => window.removeEventListener(ACCESS_TOKEN_EVENT, listener);
+}
+function fresh(token: string | null): boolean {
+    if (!token) return false;
+    try {
+        const payload = JSON.parse(atob(token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/")));
+        return typeof payload.exp === "number" && payload.exp * 1000 > Date.now() + 15_000;
+    } catch { return false; }
+}
+export async function recoverSession(force = false): Promise<string | null> {
+    if (!force && fresh(accessToken)) return accessToken;
+    if (loggedOut) return null;
+    if (refreshRequest) return refreshRequest;
+    const started = generation;
+    const exchange = async () => {
+        const response = await fetch("/api/auth/refresh", { method: "POST", credentials: "same-origin", cache: "no-store" });
+        const body = await response.json();
+        if (started !== generation) return accessToken;
+        if (!response.ok || typeof body.accessToken !== "string") {
+            if (response.status === 401 || response.status === 403) logoutLocally();
+            return null;
+        }
+        setAccessToken(body.accessToken);
+        return body.accessToken as string;
+    };
+    refreshRequest = (typeof navigator !== "undefined" && navigator.locks
+        ? navigator.locks.request("flynext-refresh", exchange) : exchange())
+        .catch(() => null).finally(() => { refreshRequest = null; });
+    return refreshRequest;
+}
+/** Refresh before a write when needed. Only GET may be retried after a 401. */
+export async function sessionFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+    const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    const url = new URL(raw, window.location.origin);
+    if (url.origin === window.location.origin && /^\/api\/auth\/(login|logout)$/.test(url.pathname)) {
+        // Serialize every refresh-cookie writer. A late refresh response must
+        // not replace a newer login cookie or restore a cookie after logout.
+        if (refreshRequest) await refreshRequest;
+        const send = () => fetch(input, init);
+        return typeof navigator !== "undefined" && navigator.locks
+            ? navigator.locks.request("flynext-refresh", send) : send();
+    }
+    if (url.origin !== window.location.origin || !url.pathname.startsWith("/api/") || url.pathname.startsWith("/api/auth/")) return fetch(input, init);
+    const method = (init.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+    let token = getAccessToken();
+    if (token && !fresh(token)) token = await recoverSession();
+    const headers = new Headers(init.headers ?? (input instanceof Request ? input.headers : undefined));
+    if (token) headers.set("Authorization", `Bearer ${token}`);
+    else headers.delete("Authorization");
+    const response = await fetch(input, { ...init, headers });
+    if (response.status !== 401 || method !== "GET") return response;
+    const current = getAccessToken();
+    const replacement = current !== token && fresh(current) ? current : await recoverSession(true);
+    if (!replacement) return response;
+    headers.set("Authorization", `Bearer ${replacement}`);
+    return fetch(input, { ...init, headers });
 }

@@ -262,7 +262,7 @@ npm run dev               # http://localhost:3000
 | --- | --- |
 | `DATABASE_URL` | Prisma 使用的 PostgreSQL 连接串 |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | 仅用于自带的 docker-compose 栈 |
-| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | 令牌签名密钥 —— 请使用足够长的随机值 |
+| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | 访问令牌使用随机签名密钥；JWT_REFRESH_SECRET 仅保留给旧版 JWT 工具 |
 | `JWT_ACCESS_TOKEN_EXPIRY_TIME` | 访问令牌有效期，例如 `1h` |
 | `JWT_REFRESH_TOKEN_EXPIRY_TIME` | 刷新 Cookie 有效期，例如 `7d` |
 | `AFS_BASE_URL` | AFS 服务地址；留空、非 HTTP 协议或指向文档中的占位主机，都表示使用内置服务商 |
@@ -298,7 +298,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 | `npm run typecheck` | 对应用与测试代码做类型检查 |
 | `npm test` | 运行纯单元测试（默认不连接数据库） |
 | `npm run test:watch` | 监听模式运行纯单元测试 |
-| `npm run test:integration` | 仅对已验证的专用本地库运行集成测试 |
+| `npm run test:integration` | 对已登记的专用 Neon 测试库运行集成测试 |
 | `npm run seed` | 导入**演示/重置夹具**（`tsx prisma/seed.ts`）——先清空相关表，再重建 50 个演示用户、酒店、订单与行程 |
 | `npm run seed:reference` | 导入**生产参考数据**（`tsx prisma/seed-reference.ts`）——只新增城市、机场、酒店、房型及其按晚可用量，不删除任何数据 |
 | `npm run seed:prod` | 先重新编译服务端，再运行受保护的演示夹具（禁止用于生产数据） |
@@ -322,19 +322,18 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 
 `npm test` / `npm run test:unit` 默认只运行纯单元测试，不加载环境文件，不连接数据库。
 
-集成测试会迁移并清空数据，只允许使用新建、明确可清空的专用本地数据库。
-现有 `.env` / `.env.test` 不会被集成测试加载。安装本机 PostgreSQL 工具后：
+集成测试会迁移并清空数据。当前优先使用现有 `.env.test` 中经过身份登记的 Neon
+`flynext_test`，不会覆盖连接字符串；Docker Desktop 只是可选方案。
 
 ```bash
-npm run test:db:start
-npm run test:db:check
+npm run test:db:verify
 npm run test:integration
-npm run test:db:stop
 ```
 
-工具生成被忽略的 `.env.test.local` 和 `.local-test-db/`，随机凭据仅存于本机。
-执行前同时验证非生产环境、显式清空许可、回环地址、专用端口/账号/库名及数据库身份标记。
-仅有 `_test` 后缀不足以证明安全。无法建立隔离环境时，禁止改用远程数据库。
+执行前验证精确连接身份、TLS、与业务数据库的区别；每次写入前复核实际数据库 OID、账号和随机身份标记。
+仅凭文件名、`_test` 后缀或环境变量不能放行。未知远程库和生产环境仍被拒绝。
+当前目标已经登记；新机器的显式登记与可选本地方案（`FLYNEXT_TEST_ENV=local`）见开发说明。
+不得因校验失败自动切换数据库，也不要输出或提交连接凭据。
 
 完整工作流、危险 seed 防护及命令见 [开发说明](docs/DEVELOPMENT.md)；
 当前安全部署指引见 [部署说明](docs/DEPLOYMENT.md)。
@@ -345,7 +344,7 @@ npm run test:db:stop
 npm run typecheck
 npm test
 npm run build
-# 仅在专用本地测试库启动并验证后执行：
+# 仅在专用测试目标通过身份验证后执行：
 npm run test:integration
 ```
 
@@ -396,7 +395,7 @@ npm run test:integration
 
 只有 `http`/`https` 地址才算数，`https://afs.invalid` 这类文档中的占位地址会被视为
 **未配置**而不会被真正请求。集成测试 setup 强制使用内置 AFS 并清空远程地址和 Key，
-不会加载现有的 `.env.test`。
+优先加载现有 `.env.test`，然后清空真实外部服务凭据。
 
 远程调用还要求 `AFS_API_KEY`；缺少它时调用会以 `502` 失败，而不会悄悄改用内置服务商。
 `AFS_MOCK=false` 表达的是"要走 HTTP"的意图，但它无法提供地址：当 `AFS_BASE_URL` 缺失或
@@ -553,7 +552,7 @@ Development）都要勾选。键名必须完全一致。
 | --- | --- | --- |
 | 1 | `DATABASE_URL` | Neon 的连接池连接串，形如 `...?sslmode=require` |
 | 2 | `JWT_ACCESS_SECRET` | 足够长的随机字符串 |
-| 3 | `JWT_REFRESH_SECRET` | **另一个**足够长的随机字符串 |
+| 3 | `JWT_REFRESH_SECRET` | 仅旧版 JWT 工具使用；当前刷新会话使用随机不透明凭据 |
 | 4 | `JWT_ACCESS_TOKEN_EXPIRY_TIME` | `1h` |
 | 5 | `JWT_REFRESH_TOKEN_EXPIRY_TIME` | `7d` |
 | 6 | `AFS_BASE_URL` | **留空。** 本地 AFS 容器在 Vercel 上无法访问 |

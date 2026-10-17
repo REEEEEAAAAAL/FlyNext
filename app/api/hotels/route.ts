@@ -46,7 +46,7 @@ function readFilter(searchParams: URLSearchParams, field: string): string {
 }
 
 export const GET = withRoute(async (request) => {
-	enforceRateLimit(request, "publicRead");
+	await enforceRateLimit(request, "publicRead");
 	const { searchParams } = new URL(request.url);
 
 	const city = readFilter(searchParams, "city");
@@ -97,7 +97,7 @@ export const GET = withRoute(async (request) => {
 
 export const POST = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "bookingWrite");
+	await enforceRateLimit(request, "bookingWrite");
 	const formData = await request.formData();
 
 	// Required text fields, in the order the error message lists them.
@@ -113,12 +113,9 @@ export const POST = withRoute(async (request) => {
 	const logoFiles = readFormFiles(formData, "logo");
 	const imagesFiles = readFormFiles(formData, "images");
 
-	const [logoUrl, imagesUrls] = await Promise.all([
-		logoFiles.length > 0
-			? saveImageUploads(logoFiles, "hotels").then((urls) => urls[0])
-			: Promise.resolve("/hotel-logo-default.svg"),
-		saveImageUploads(imagesFiles, "hotels"),
-	]);
+	if (logoFiles.length > 1) throw badRequest("Only one hotel logo is allowed.");
+	const logoUrl = logoFiles.length ? (await saveImageUploads(logoFiles, "hotels"))[0] : "/hotel-logo-default.svg";
+	const imagesUrls = await saveImageUploads(imagesFiles, "hotels");
 
 	const hotel = await prisma.$transaction(async (tx) => {
 		const created = await tx.hotel.create({

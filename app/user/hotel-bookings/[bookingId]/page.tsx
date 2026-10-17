@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -49,12 +51,12 @@ export default function HotelBookingDetailsPage() {
      * not found" for a booking that exists.
      */
     const refreshToken = async () => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             router.push("/auth/login");
             return;
         }
-        const response = await fetch("/api/user", {
+        const response = await sessionFetch("/api/user", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -71,7 +73,7 @@ export default function HotelBookingDetailsPage() {
     };
 
     useEffect(() => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             router.push("/auth/login");
             return;
@@ -82,7 +84,7 @@ export default function HotelBookingDetailsPage() {
             setLoading(true);
             setError("");
             try {
-                const res = await fetch(
+                const res = await sessionFetch(
                     `/api/user/hotel-bookings/${params.bookingId}`,
                     {
                         method: "GET",
@@ -153,7 +155,7 @@ export default function HotelBookingDetailsPage() {
      * cancelling it would do.
      */
     const handleCancelBooking = async () => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             router.push("/auth/login");
             return;
@@ -188,7 +190,7 @@ export default function HotelBookingDetailsPage() {
         const pending = info("Cancelling your booking…", { duration: 0 });
 
         try {
-            const res = await fetch(
+            const res = await sessionFetch(
                 `/api/user/hotel-bookings/${params.bookingId}`,
                 {
                     method: "DELETE",
@@ -217,7 +219,7 @@ export default function HotelBookingDetailsPage() {
             });
 
             // Refresh booking data
-            const bookingRes = await fetch(
+            const bookingRes = await sessionFetch(
                 `/api/user/hotel-bookings/${params.bookingId}`,
                 {
                     headers: {

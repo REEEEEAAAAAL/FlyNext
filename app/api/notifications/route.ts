@@ -27,7 +27,7 @@ const MAX_NOTIFICATIONS = 100;
 
 export const GET = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "notificationRead");
+	await enforceRateLimit(request, "notificationRead");
 
 	const notifications = await prisma.notification.findMany({
 		where: { userId },
@@ -40,7 +40,7 @@ export const GET = withRoute(async (request) => {
 
 export const POST = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "bookingWrite");
+	await enforceRateLimit(request, "bookingWrite");
 
 	const body = await parseJsonBody(request);
 	const content = readString(body, "content", { maxLength: 1000 });

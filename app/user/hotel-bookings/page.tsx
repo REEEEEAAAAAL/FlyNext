@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -36,12 +38,12 @@ export default function UserHotelBookingsPage() {
      * leaving the traveller on a page whose only content is "Unauthorized".
      */
     const refreshToken = async () => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             router.push("/auth/login");
             return;
         }
-        const response = await fetch("/api/user", {
+        const response = await sessionFetch("/api/user", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -58,7 +60,7 @@ export default function UserHotelBookingsPage() {
     };
 
     useEffect(() => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             router.push("/auth/login");
             return;
@@ -75,7 +77,7 @@ export default function UserHotelBookingsPage() {
                  * page that must not be offered cancelled reservations, and it
                  * omits the flag.
                  */
-                const res = await fetch(
+                const res = await sessionFetch(
                     "/api/user/hotel-bookings?includeCancelled=1",
                     {
                         method: "GET",

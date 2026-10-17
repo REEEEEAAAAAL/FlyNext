@@ -1,3 +1,4 @@
+import { enforceRateLimit } from "@/lib/api/rate-limit";
 /**
  * `GET    /api/hotels/[hotelId]` — public hotel detail (with room types).
  * `PUT    /api/hotels/[hotelId]` — update a hotel (owner only, multipart).
@@ -19,7 +20,7 @@
  */
 
 import { requireAuth } from "@/lib/api/auth";
-import { forbidden, notFound } from "@/lib/api/errors";
+import { badRequest, forbidden, notFound } from "@/lib/api/errors";
 import { withRoute } from "@/lib/api/handler";
 import { jsonMessage, jsonOk } from "@/lib/api/response";
 import { resolveImageEntries, saveImageUploads } from "@/lib/api/upload";
@@ -73,6 +74,7 @@ export const PUT = withRoute<{ hotelId: string }>(async (request, context) => {
 	const { hotelId: rawHotelId } = await context.params;
 	const hotelId = parseRouteId(rawHotelId, "hotelId");
 	const { userId } = requireAuth(request);
+	await enforceRateLimit(request, "bookingWrite");
 
 	await requireOwnedHotel(hotelId, userId);
 
@@ -111,6 +113,7 @@ export const PUT = withRoute<{ hotelId: string }>(async (request, context) => {
 	// A single new logo replaces the current one; the form sends either a File or
 	// the existing URL.
 	const logoFiles = readFormFiles(formData, "logo");
+	if (logoFiles.length > 1) throw badRequest("Only one hotel logo is allowed.");
 	if (logoFiles.length > 0) {
 		const urls = await saveImageUploads(logoFiles, "hotels");
 		updates.logo = urls[0];
@@ -132,6 +135,7 @@ export const DELETE = withRoute<{ hotelId: string }>(async (request, context) =>
 	const { hotelId: rawHotelId } = await context.params;
 	const hotelId = parseRouteId(rawHotelId, "hotelId");
 	const { userId } = requireAuth(request);
+	await enforceRateLimit(request, "bookingWrite");
 
 	await requireOwnedHotel(hotelId, userId);
 

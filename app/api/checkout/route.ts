@@ -38,7 +38,7 @@ const CARD_EXPIRY_PATTERN = /^(0?[1-9]|1[0-2])\/\d{2}(\d{2})?$/;
 
 export const POST = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "checkout");
+	await enforceRateLimit(request, "checkout");
 	const body = await parseJsonBody(request);
 
 	// `readId` accepts `5` and `"5"` alike; anything that is not a positive

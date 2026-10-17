@@ -1,4 +1,6 @@
 "use client";
+
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
 export const dynamic = 'force-dynamic';
 
 import { Suspense, useState, useEffect } from "react";
@@ -41,12 +43,12 @@ function CheckoutPageContent() {
   // Check if user is authenticated by fetching user info
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
       if (!token) {
         router.push("/auth/login");
         return;
       }
-      const response = await fetch("/api/user", {
+      const response = await sessionFetch("/api/user", {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (response.status === 401) {
@@ -61,7 +63,7 @@ function CheckoutPageContent() {
   // completes the purchase.
   useEffect(() => {
     if (!itineraryId) return;
-    const token = localStorage.getItem("accessToken");
+    const token = getAccessToken();
     if (!token) {
       router.push("/auth/login");
       return;
@@ -71,7 +73,7 @@ function CheckoutPageContent() {
       setLoading(true);
       setError("");
       try {
-        const res = await fetch(`/api/itineraries/${itineraryId}`, {
+        const res = await sessionFetch(`/api/itineraries/${itineraryId}`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -119,13 +121,13 @@ function CheckoutPageContent() {
     const pending = info("Processing your payment…", { duration: 0 });
 
     try {
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
       if (!token) {
         router.push("/auth/login");
         return;
       }
 
-      const res = await fetch("/api/checkout", {
+      const res = await sessionFetch("/api/checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -185,14 +187,14 @@ function CheckoutPageContent() {
     try {
       setDownloading(true);
       setDownloadError("");
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
 
       if (!token || !itineraryId) {
         router.push("/auth/login");
         return;
       }
 
-      const response = await fetch(`/api/invoice?itineraryId=${itineraryId}`, {
+      const response = await sessionFetch(`/api/invoice?itineraryId=${itineraryId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearAccessToken } from "@/app/lib/session";
@@ -357,12 +359,12 @@ export default function FlightSearchPage() {
 
     // Redirect to login if not logged in.
     const ensureLoggedIn = async (): Promise<boolean> => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             router.push("/auth/login");
             return false;
         }
-        const response = await fetch("/api/user", {
+        const response = await sessionFetch("/api/user", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -378,7 +380,7 @@ export default function FlightSearchPage() {
     // Fetch suggestions from /api/locations/airports?q=...
     const fetchSuggestions = async (query: string): Promise<Airport[]> => {
         try {
-            const res = await fetch(`/api/locations/airports?q=${encodeURIComponent(query)}`, {
+            const res = await sessionFetch(`/api/locations/airports?q=${encodeURIComponent(query)}`, {
                 method: "GET",
                 headers: { "Content-Type": "application/json" },
             });
@@ -442,7 +444,7 @@ export default function FlightSearchPage() {
             destination,
             date,
         }).toString();
-        const res = await fetch(`/api/flights/search?${query}`, {
+        const res = await sessionFetch(`/api/flights/search?${query}`, {
             method: "GET",
             headers: { "Content-Type": "application/json" },
         });
@@ -537,11 +539,11 @@ export default function FlightSearchPage() {
 
     // Helper function to fetch user info from the backend.
     const fetchUserInfo = async () => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             throw new Error("User not logged in");
         }
-        const res = await fetch("/api/user", {
+        const res = await sessionFetch("/api/user", {
             headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${token}`,
@@ -606,13 +608,13 @@ export default function FlightSearchPage() {
             }
 
             const user = await fetchUserInfo();
-            const token = localStorage.getItem("accessToken");
+            const token = getAccessToken();
             if (!token) {
                 router.push("/auth/login");
                 return;
             }
 
-            const res = await fetch("/api/flights/book", {
+            const res = await sessionFetch("/api/flights/book", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

@@ -15,15 +15,16 @@
  */
 
 import * as cookie from "cookie";
-import { forbidden, unauthorized } from "@/lib/api/errors";
+import { unauthorized } from "@/lib/api/errors";
 import { withRoute } from "@/lib/api/handler";
 import { enforceRateLimit } from "@/lib/api/rate-limit";
-import { jsonOk } from "@/lib/api/response";
-import { generateAccessToken, verifyRefreshToken } from "@/lib/auth";
+import { jsonWithSetCookie } from "@/lib/api/response";
+import { generateAccessToken } from "@/lib/auth";
+import { rotateRefreshSession, refreshCookie } from "@/lib/refresh-sessions";
 import type { RefreshResponse } from "@/types";
 
 export const POST = withRoute(async (request) => {
-	enforceRateLimit(request, "refresh");
+	await enforceRateLimit(request, "refresh");
 
 	const header = request.headers.get("cookie");
 	if (header === null || header.length === 0) {
@@ -35,13 +36,13 @@ export const POST = withRoute(async (request) => {
 		throw unauthorized("No refresh token provided");
 	}
 
-	const claims = verifyRefreshToken(refreshToken);
-	if (claims === null) {
-		throw forbidden("Invalid or expired Refresh Token");
-	}
+	const session = await rotateRefreshSession(refreshToken);
 
 	const body: RefreshResponse = {
-		accessToken: generateAccessToken({ userId: claims.userId }),
+		accessToken: generateAccessToken({ userId: session.userId }),
 	};
-	return jsonOk(body);
+	const remaining = Math.max(0, Math.floor((session.expiresAt.getTime() - Date.now()) / 1000));
+	const response = jsonWithSetCookie(body, refreshCookie(session.token, remaining));
+	response.headers.set("Cache-Control", "no-store");
+	return response;
 });

@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { Suspense, useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { clearAccessToken } from "@/app/lib/session";
@@ -16,7 +18,7 @@ function InvoicePageContent() {
     // Protect the page: redirect to login if no JWT found.
     useEffect(() => {
         const fetchData = async () => {
-            const token = localStorage.getItem("accessToken");
+            const token = getAccessToken();
             if (!token) {
                 /*
                  * Navigating on the no-token branch is what keeps a logged-out
@@ -28,7 +30,7 @@ function InvoicePageContent() {
                 return;
             }
 
-            const response = await fetch("/api/user", {
+            const response = await sessionFetch("/api/user", {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -65,8 +67,8 @@ function InvoicePageContent() {
             setLoading(true);
             setError("");
             try {
-                const token = localStorage.getItem("accessToken");
-                const res = await fetch(
+                const token = getAccessToken();
+                const res = await sessionFetch(
                     `/api/invoice?itineraryId=${itineraryId}`,
                     {
                         method: "GET",

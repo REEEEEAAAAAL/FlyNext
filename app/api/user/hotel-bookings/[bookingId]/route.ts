@@ -76,7 +76,7 @@ export const GET = withRoute<{ bookingId: string }>(async (request, context) => 
 export const DELETE = withRoute<{ bookingId: string }>(
 	async (request, context) => {
 		const { userId } = requireAuth(request);
-		enforceRateLimit(request, "bookingWrite");
+		await enforceRateLimit(request, "bookingWrite");
 		const { bookingId: rawBookingId } = await context.params;
 		const bookingId = parseRouteId(rawBookingId, "bookingId");
 

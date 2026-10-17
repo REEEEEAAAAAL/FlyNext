@@ -3,6 +3,7 @@ import NavigationBar from "./components/NavigationBar";
 import { FeedbackProvider } from "./context/FeedbackContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { Analytics } from "@vercel/analytics/next";
+import { SessionProvider } from "./context/SessionProvider";
 
 export const metadata = {
   title: "FlyNext",
@@ -60,8 +61,10 @@ export default function RootLayout({
           */}
         <ThemeProvider>
           <FeedbackProvider>
+            <SessionProvider>
             <NavigationBar />
             {children}
+            </SessionProvider>
           </FeedbackProvider>
         </ThemeProvider>
         <Analytics />

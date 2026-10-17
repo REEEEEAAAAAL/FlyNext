@@ -3,6 +3,7 @@ import { aliases, unitTestFiles } from "./vitest.shared";
 export default defineConfig({
     test: {
         environment: "node",
+        reporters: ["verbose"],
         include: ["tests/**/*.test.ts"],
         exclude: [...unitTestFiles, "node_modules/**"],
         globalSetup: ["tests/setup/global-setup.ts"],

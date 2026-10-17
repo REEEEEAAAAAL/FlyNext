@@ -1,5 +1,7 @@
 "use client";
 
+import { sessionFetch } from "@/app/lib/session";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFeedback } from "@/app/context/FeedbackContext";
@@ -70,7 +72,7 @@ export default function RegisterPage() {
 
     try {
       // Send a POST request to the registration API endpoint
-      const res = await fetch("/api/auth/register", {
+      const res = await sessionFetch("/api/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

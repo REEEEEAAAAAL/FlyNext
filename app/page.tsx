@@ -1,9 +1,11 @@
 "use client";
 
+import { getAccessToken } from "@/app/lib/session";
+
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { clearAccessToken } from "@/app/lib/session";
+import { subscribeToAccessToken } from "@/app/lib/session";
 
 export default function HomePage() {
     const router = useRouter();
@@ -13,27 +15,12 @@ export default function HomePage() {
 
     // Check for authentication on mount.
     useEffect(() => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         setIsAuthenticated(!!token);
+        return subscribeToAccessToken(() => setIsAuthenticated(!!getAccessToken()));
     }, []);
 
-    const handleLogout = async () => {
-        try {
-            const token = localStorage.getItem("accessToken");
-            const res = await fetch("/api/auth/logout", {
-                method: "POST",
-                headers: {
-                    Authorization: token ? `Bearer ${token}` : "",
-                },
-            });
-            if (res.ok) {
-                clearAccessToken();
-                router.push("/auth/login");
-            }
-        } catch (error) {
-            console.error("Logout failed:", error);
-        }
-    };
+    const handleLogout = () => router.push("/auth/logout");
 
     return (
         <div className="min-h-screen flex flex-col bg-[var(--background)] text-[var(--text)]">

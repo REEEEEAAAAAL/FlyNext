@@ -25,7 +25,7 @@ export const GET = withRoute(async (request) => {
 	// The badge polls this endpoint on a timer, so a tab that has lost its network
 	// or is running a broken loop can otherwise turn into a permanent query stream
 	// against the database. The budget is several times the intended poll rate.
-	enforceRateLimit(request, "notificationPoll");
+	await enforceRateLimit(request, "notificationPoll");
 
 	const unreadCount = await prisma.notification.count({
 		where: { userId, isRead: false },

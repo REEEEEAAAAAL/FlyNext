@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { clearAccessToken } from "@/app/lib/session";
@@ -20,14 +22,14 @@ export default function NotificationsPage() {
   // Redirect to login if no access token is found.
   useEffect(() => {
     const fetchData = async () => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             // Redirect to login if no token found.
             router.push("/auth/login");
             return;
         }
 
-        const response = await fetch("/api/user", {
+        const response = await sessionFetch("/api/user", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -52,8 +54,8 @@ export default function NotificationsPage() {
       setLoading(true);
       setError("");
       try {
-        const token = localStorage.getItem("accessToken");
-        const res = await fetch("/api/notifications", {
+        const token = getAccessToken();
+        const res = await sessionFetch("/api/notifications", {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -80,8 +82,8 @@ export default function NotificationsPage() {
   // Mark a notification as read.
   const markAsRead = async (notificationId: number) => {
     try {
-      const token = localStorage.getItem("accessToken");
-      const res = await fetch(`/api/notifications/${notificationId}/read`, {
+      const token = getAccessToken();
+      const res = await sessionFetch(`/api/notifications/${notificationId}/read`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",

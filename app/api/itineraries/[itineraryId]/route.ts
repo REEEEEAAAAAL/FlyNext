@@ -1,3 +1,4 @@
+import { enforceRateLimit } from "@/lib/api/rate-limit";
 /**
  * `GET    /api/itineraries/[itineraryId]` — full itinerary detail.
  * `DELETE /api/itineraries/[itineraryId]` — cancel the itinerary and everything in it.
@@ -76,6 +77,7 @@ export const GET = withRoute<{ itineraryId: string }>(async (request, context) =
 export const DELETE = withRoute<{ itineraryId: string }>(
 	async (request, context) => {
 		const { userId } = requireAuth(request);
+	await enforceRateLimit(request, "bookingWrite");
 		const { itineraryId: rawItineraryId } = await context.params;
 		const itineraryId = parseRouteId(rawItineraryId, "itineraryId");
 

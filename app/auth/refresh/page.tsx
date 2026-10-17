@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { setAccessToken } from "@/app/lib/session";
+import { recoverSession } from "@/app/lib/session";
 
 export default function RefreshPage() {
   const router = useRouter();
@@ -11,14 +11,11 @@ export default function RefreshPage() {
     async function refreshToken() {
       try {
         // Send a POST request to the refresh API endpoint
-        const res = await fetch("/api/auth/refresh", { method: "POST" });
-        const data = await res.json();
-
-        if (res.ok) {
+        const token = await recoverSession(true);
+        if (token) {
           // Store the new access token for subsequent requests, through the
           // helper so the notification badge learns the session is back and
           // resumes polling.
-          setAccessToken(data.accessToken);
           // Return to the page that triggered the refresh.
           router.back();
         } else {

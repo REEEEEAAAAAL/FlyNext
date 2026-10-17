@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { clearAccessToken } from "@/app/lib/session";
@@ -32,14 +34,14 @@ export default function CreateRoomTypePage() {
     // Protect the page
     useEffect(() => {
         const fetchData = async () => {
-            const token = localStorage.getItem("accessToken");
+            const token = getAccessToken();
             if (!token) {
                 // Redirect to login if no token found.
                 router.push("/auth/login");
                 return;
             }
 
-            const response = await fetch("/api/user", {
+            const response = await sessionFetch("/api/user", {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -105,14 +107,14 @@ export default function CreateRoomTypePage() {
         const pending = info("Creating the room type…", { duration: 0 });
 
         try {
-            const token = localStorage.getItem("accessToken");
+            const token = getAccessToken();
             if (!token) {
                 // Redirect to login if no token found.
                 router.push("/auth/login");
                 return;
             }
 
-            const response = await fetch("/api/user", {
+            const response = await sessionFetch("/api/user", {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -140,7 +142,7 @@ export default function CreateRoomTypePage() {
                 }
             });
 
-            const res = await fetch(`/api/hotels/${hotelId}/room-types`, {
+            const res = await sessionFetch(`/api/hotels/${hotelId}/room-types`, {
                 method: "POST",
                 headers: {
                     Authorization: token ? `Bearer ${token}` : "",

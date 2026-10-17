@@ -25,7 +25,7 @@
 - `npm run dev`, `npm run build`, `npm start`: development, production build and production server.
 - `npm run typecheck`: application and test types; `npm run build:server`: compile framework-independent server/seed code to ignored `dist/`.
 - `npm test` / `npm run test:unit`: database-free tests only.
-- `npm run test:integration`: destructive integration suite; requires the dedicated local test environment described in `docs/DEVELOPMENT.md`.
+- `npm run test:integration`: destructive integration suite; prefers the enrolled Neon test target in `.env.test` described in `docs/DEVELOPMENT.md`.
 - `npm run prisma:generate`: generate client only. `npm run prisma:migrate`: writes schema; inspect target and obtain authorization for that environment first.
 - `npm run seed` and `seed:prod`: destructive reset fixture, local disposable `_test`/`_demo` database only, with explicit opt-in. The `:prod` name refers to compiled output, NOT production safety.
 - `npm run seed:reference`: additive reference data, still a database write; never run against existing remote data as part of routine validation.
@@ -33,10 +33,10 @@
 ## Safety and conventions
 
 - Never print or commit `.env` contents, connection credentials, tokens, API keys, booking backups or database files.
-- Never migrate, truncate, reset or seed the existing remote databases. A `_test` suffix alone does not establish isolation.
-- Integration setup must reject production/deployment environments, non-loopback hosts, unapproved database names and missing destructive-operation opt-in BEFORE connecting.
+- Business and unknown remote databases must never be migrated, truncated, reset or seeded. The explicitly enrolled Neon `flynext_test` target alone may receive guarded integration migrations, synthetic fixtures and TRUNCATE. A `_test` suffix or env flag alone does not establish isolation.
+- Integration prefers existing `.env.test` without overwriting DATABASE_URL; `.env.test.local` is selected only with FLYNEXT_TEST_ENV=local. Reject deployment context before Vitest starts. Before connecting, require exact remote enrollment/TLS/business-target exclusion or the dedicated loopback config; before writes, verify the actual database marker/OID/role. Docker is optional.
 - Keep pure tests independent of env-file loading, Prisma connections, migrations and Cloudinary calls.
 - Route errors use `withRoute`/`ApiError`; preserve established response envelopes and JSON numeric values. Do not suppress type/build errors or remove working features to pass checks.
-- Use migrations for intentional schema changes; stage 2 must not modify business handlers, auth behavior, booking logic or UI.
+- Use migrations for intentional schema changes. The current user authorized test-environment refinement and stage 3, starting with B01; stages 4–6 remain outside scope. Never migrate a business deployment without separate authorization.
 - UI stages require actual desktop/mobile interaction and screenshots when possible. Clearly record unverified visual checks.
-- Update progress with actual commands/results, blockers, migration impact and next entry point. B01 (public room API exposing guest data) remains the first stage-3 P0 task.
+- Update progress with actual commands/results, blockers, migration impact and next entry point. Stage 3 began with B01 and is now complete. Public room responses must never contain guest reservations; keep the current-owner reservations endpoint and privacy/session regressions. Stage 4 requires new authorization; see plan/progress for the next entry point.

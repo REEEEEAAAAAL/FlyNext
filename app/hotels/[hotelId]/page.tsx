@@ -1,5 +1,7 @@
 "use client";
 
+import { sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -42,7 +44,7 @@ export default function HotelDetailsPage() {
       setLoading(true);
       setError("");
       try {
-        const res = await fetch(`/api/hotels/${hotelId}`, { method: "GET" });
+        const res = await sessionFetch(`/api/hotels/${hotelId}`, { method: "GET" });
         const data = await res.json();
         if (!res.ok) {
           setError(data.error || "Error fetching hotel details.");

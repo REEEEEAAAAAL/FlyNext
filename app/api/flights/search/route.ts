@@ -1,3 +1,4 @@
+import { enforceRateLimit } from "@/lib/api/rate-limit";
 /**
  * `GET /api/flights/search?origin=&destination=&date=`
  *
@@ -98,6 +99,7 @@ function withDurations(group: AfsFlightGroup): AfsFlightGroup {
 }
 
 export const GET = withRoute(async (request) => {
+	await enforceRateLimit(request, "flightSearch");
 	const { searchParams } = new URL(request.url);
 
 	const origin = (searchParams.get("origin") ?? "").trim();

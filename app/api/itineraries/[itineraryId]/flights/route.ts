@@ -85,7 +85,7 @@ export const GET = withRoute<{ itineraryId: string }>(async (request, context) =
 export const DELETE = withRoute<{ itineraryId: string }>(
 	async (request, context) => {
 		const { userId } = requireAuth(request);
-		enforceRateLimit(request, "bookingWrite");
+		await enforceRateLimit(request, "bookingWrite");
 		const { itineraryId: rawItineraryId } = await context.params;
 		const itineraryId = parseRouteId(rawItineraryId, "itineraryId");
 

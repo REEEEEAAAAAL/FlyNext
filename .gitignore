@@ -63,3 +63,4 @@ repair-flight-directions.backup.json
 
 # Dedicated local PostgreSQL cluster, never application data
 /.local-test-db/
+/.neon-test-approval.json

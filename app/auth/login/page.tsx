@@ -1,5 +1,7 @@
 "use client";
 
+import { sessionFetch } from "@/app/lib/session";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { setAccessToken } from "@/app/lib/session";
@@ -35,7 +37,7 @@ export default function LoginPage() {
 
     try {
       // Send a POST request to the login API endpoint
-      const res = await fetch("/api/auth/login", {
+      const res = await sessionFetch("/api/auth/login", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

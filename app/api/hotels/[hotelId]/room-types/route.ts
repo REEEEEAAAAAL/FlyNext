@@ -61,7 +61,7 @@ export const POST = withRoute<{ hotelId: string }>(async (request, context) => {
 	const { hotelId: rawHotelId } = await context.params;
 	const hotelId = parseRouteId(rawHotelId, "hotelId");
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "bookingWrite");
+	await enforceRateLimit(request, "bookingWrite");
 
 	await requireOwnedHotel(hotelId, userId);
 

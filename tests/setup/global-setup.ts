@@ -17,10 +17,10 @@
 import { PrismaClient } from "@prisma/client";
 import { applyMigrations } from "#support/migrate";
 import { verifyTestDatabase } from "#support/safety";
+import { migrationDatabaseUrl } from "./test-target";
 
 export async function setup(): Promise<void> {
-	// Only the newly generated .env.test.local is loaded. Existing remote
-	// .env/.env.test configurations are never used by this suite.
+	// .env.test is preferred; local is an explicit alternative only.
 	const env = await import("./load-env");
 
 	if (!env.IsTestDatabase) {
@@ -30,7 +30,7 @@ export async function setup(): Promise<void> {
 		);
 	}
 
-	const prisma = new PrismaClient();
+	const prisma = new PrismaClient({ datasourceUrl: migrationDatabaseUrl(process.env.DATABASE_URL!) });
 	try {
 		await verifyTestDatabase(prisma);
 		const applied = await applyMigrations(prisma);

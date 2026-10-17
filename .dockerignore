@@ -22,6 +22,7 @@ coverage
 .npm-cache
 .acl-recovery
 .local-test-db
+.neon-test-approval.json
 .vercel
 .codex
 .agents

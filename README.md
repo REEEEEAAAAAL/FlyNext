@@ -300,7 +300,7 @@ npm run dev               # http://localhost:3000
 | --- | --- |
 | `DATABASE_URL` | PostgreSQL connection string used by Prisma |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Only for the bundled docker-compose stack |
-| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Token signing keys — use long random values |
+| `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` | Access-token signing key; JWT_REFRESH_SECRET is legacy-only with opaque refresh sessions |
 | `JWT_ACCESS_TOKEN_EXPIRY_TIME` | Access token lifetime, e.g. `1h` |
 | `JWT_REFRESH_TOKEN_EXPIRY_TIME` | Refresh cookie lifetime, e.g. `7d` |
 | `AFS_BASE_URL` | AFS service address. Empty, non-HTTP or a documented placeholder host means "use the built-in provider" |
@@ -336,7 +336,7 @@ node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 | `npm run typecheck` | Type-check the application and the test suite |
 | `npm test` | Run database-free unit tests |
 | `npm run test:watch` | Watch database-free unit tests |
-| `npm run test:integration` | Run integration tests on the verified disposable local database |
+| `npm run test:integration` | Run integration tests on the enrolled Neon test database |
 | `npm run seed` | Load the **demo/reset fixture** (`tsx prisma/seed.ts`) — clears the tables, then rebuilds 50 demo users, hotels, bookings and itineraries |
 | `npm run seed:reference` | Load the **production reference data** (`tsx prisma/seed-reference.ts`) — adds cities, airports, hotels, room types and their nightly availability, deletes nothing |
 | `npm run seed:prod` | Rebuild server code, then run the guarded compiled demo fixture (never production data) |
@@ -360,16 +360,20 @@ Three scripts are run directly rather than through npm:
 
 `npm test` / `npm run test:unit` run database-free unit tests by default. They do not load environment files or connect to PostgreSQL.
 
-Integration tests migrate and clear data. Only a NEW, explicitly disposable local database is allowed; existing `.env` and `.env.test` are never loaded by this suite. With native PostgreSQL tools on PATH:
+Integration tests migrate and clear data. The preferred target is the explicitly enrolled Neon
+`flynext_test` database in existing `.env.test`; the runner never rewrites its connection string.
+Docker Desktop is optional.
 
 ```bash
-npm run test:db:start
-npm run test:db:check
+npm run test:db:verify
 npm run test:integration
-npm run test:db:stop
 ```
 
-The helper generates ignored `.env.test.local` and `.local-test-db/` with random local credentials. Setup verifies non-production context, explicit reset consent, loopback host, dedicated port/role/database and the database identity marker before migrations/TRUNCATE. A `_test` suffix alone is not sufficient. Never substitute a remote database if local setup is blocked.
+Enrollment pins the exact connection identity and actual database OID/role/UUID marker, checks TLS and
+excludes configured business databases before any migration or TRUNCATE. A test filename or env flag alone
+is insufficient. Unknown remote and production targets remain refused. The current target is already enrolled;
+see the development guide for deliberate enrollment on a new machine and the optional native local alternative
+(`FLYNEXT_TEST_ENV=local`). No silent fallback is allowed. Never print or commit connection credentials.
 
 See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for setup/reset safeguards and [DEPLOYMENT.md](docs/DEPLOYMENT.md) for current release instructions.
 
@@ -379,7 +383,7 @@ See [DEVELOPMENT.md](docs/DEVELOPMENT.md) for setup/reset safeguards and [DEPLOY
 npm run typecheck
 npm test
 npm run build
-# Only after starting and verifying the dedicated local database:
+# Only after verifying the enrolled disposable test database:
 npm run test:integration
 ```
 
@@ -436,7 +440,7 @@ precedence first:
 Only `http`/`https` URLs count, and documented placeholders such as
 `https://afs.invalid` count as *not configured* rather than being called. That is
 what lets tests run without a remote service: integration setup forces built-in
-AFS and clears the remote address/key; it never loads the existing `.env.test`.
+AFS and clears the remote address/key after loading `.env.test`.
 
 A remote call additionally needs `AFS_API_KEY`; without it the call fails as `502`
 rather than quietly answering from the built-in provider. `AFS_MOCK=false` states
@@ -624,7 +628,7 @@ environments (Production, Preview, Development). Names must match exactly.
 | --- | --- | --- |
 | 1 | `DATABASE_URL` | Neon pooled connection string, `...?sslmode=require` |
 | 2 | `JWT_ACCESS_SECRET` | Long random string |
-| 3 | `JWT_REFRESH_SECRET` | A **different** long random string |
+| 3 | `JWT_REFRESH_SECRET` | Legacy JWT tooling only; unused by opaque refresh-session routes |
 | 4 | `JWT_ACCESS_TOKEN_EXPIRY_TIME` | `1h` |
 | 5 | `JWT_REFRESH_TOKEN_EXPIRY_TIME` | `7d` |
 | 6 | `AFS_BASE_URL` | **Leave empty.** A local AFS container is not reachable from Vercel |

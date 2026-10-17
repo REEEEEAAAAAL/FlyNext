@@ -107,7 +107,7 @@ function startingCapacity(
 
 export const POST = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "bookingWrite");
+	await enforceRateLimit(request, "bookingWrite");
 
 	const body = (await request.json().catch(() => null)) as Record<
 		string,
@@ -249,7 +249,7 @@ export const POST = withRoute(async (request) => {
 
 export const DELETE = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "bookingWrite");
+	await enforceRateLimit(request, "bookingWrite");
 
 	const { searchParams } = new URL(request.url);
 	const rawReservationId = searchParams.get("reservationId");

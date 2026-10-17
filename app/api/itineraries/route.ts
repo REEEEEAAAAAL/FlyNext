@@ -200,7 +200,7 @@ async function linkReservation(
 
 export const POST = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "bookingWrite");
+	await enforceRateLimit(request, "bookingWrite");
 	const body = await parseJsonBody(request);
 
 	// Both ids are optional, and the client explicitly sends `null` for the one

@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -114,12 +116,12 @@ export default function UserFlightBookingsPage() {
      * leaving the traveller on a page whose only content is "Unauthorized".
      */
     const refreshToken = async () => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             router.push("/auth/login");
             return;
         }
-        const response = await fetch("/api/user", {
+        const response = await sessionFetch("/api/user", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -137,7 +139,7 @@ export default function UserFlightBookingsPage() {
 
     useEffect(() => {
         // Protect the page: if no access token is found, redirect to login.
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             // Redirect to login if no token found.
             router.push("/auth/login");
@@ -159,7 +161,7 @@ export default function UserFlightBookingsPage() {
                  * from the moment it was cancelled. Cancelled stays are listed the
                  * same way.
                  */
-                const res = await fetch(
+                const res = await sessionFetch(
                     "/api/user/flight-bookings?includeCancelled=1",
                     {
                         method: "GET",

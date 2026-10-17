@@ -121,7 +121,7 @@ function readReturnLegCount(value: unknown, total: number): number | undefined {
 
 export const POST = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "bookingWrite");
+	await enforceRateLimit(request, "bookingWrite");
 
 	const body = await parseJsonBody(request);
 

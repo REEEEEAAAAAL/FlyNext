@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { clearAccessToken } from "@/app/lib/session";
@@ -95,14 +97,14 @@ export default function ProfilePage() {
         const fetchProfile = async () => {
             try {
                 setLoading(true);
-                const token = localStorage.getItem("accessToken");
+                const token = getAccessToken();
                 if (!token) {
                     // Redirect to login if no token found.
                     router.push("/auth/login");
                     return;
                 }
 
-                const response = await fetch("/api/user", {
+                const response = await sessionFetch("/api/user", {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
@@ -182,7 +184,7 @@ export default function ProfilePage() {
         setMessage({ type: "", text: "" });
 
         try {
-            const token = localStorage.getItem("accessToken");
+            const token = getAccessToken();
             if (!token) {
                 router.push("/auth/login");
                 return;
@@ -206,7 +208,7 @@ export default function ProfilePage() {
                 formDataToSend.append("profilePic", profileData.profilePicFile);
             }
 
-            const response = await fetch("/api/user", {
+            const response = await sessionFetch("/api/user", {
                 method: "PUT",
                 headers: {
                     Authorization: `Bearer ${token}`,

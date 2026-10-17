@@ -1,9 +1,11 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ACCESS_TOKEN_KEY, subscribeToAccessToken } from "@/app/lib/session";
+import { subscribeToAccessToken } from "@/app/lib/session";
 
 /** How often the badge refreshes while the tab is visible. */
 const POLL_INTERVAL_MS = 5000;
@@ -55,14 +57,14 @@ export default function NotificationBadge() {
             // Read the token on every tick rather than caching it: a `401` puts the
             // loop on hold, and the token that lifts the hold is issued later, by
             // `/auth/login` or `/auth/refresh`.
-            const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+            const token = getAccessToken();
             if (!token) {
                 // Nothing to poll for while logged out.
                 stoppedRef.current = true;
                 return;
             }
 
-            const res = await fetch("/api/notifications/unread-count", {
+            const res = await sessionFetch("/api/notifications/unread-count", {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
@@ -150,7 +152,7 @@ export default function NotificationBadge() {
              * either way — so without this the pill stayed on screen with the last
              * count it saw, next to a "Login" link, until a reload.
              */
-            if (localStorage.getItem(ACCESS_TOKEN_KEY) === null) {
+            if (getAccessToken() === null) {
                 setCount(0);
             }
             void tick();

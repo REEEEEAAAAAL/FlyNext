@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
@@ -85,7 +87,7 @@ export default function ItineraryDetailsPage() {
     const [itineraryBusy, setItineraryBusy] = useState(false);
 
     useEffect(() => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             router.push("/auth/login");
             return;
@@ -95,7 +97,7 @@ export default function ItineraryDetailsPage() {
             setLoading(true);
             setError("");
             try {
-                const res = await fetch(
+                const res = await sessionFetch(
                     `/api/itineraries/${params.itineraryId}`,
                     {
                         method: "GET",
@@ -158,7 +160,7 @@ export default function ItineraryDetailsPage() {
 
     /* Re-read the itinerary so the page reflects what the server holds. */
     const reloadItinerary = async (token: string) => {
-        const itineraryRes = await fetch(
+        const itineraryRes = await sessionFetch(
             `/api/itineraries/${params.itineraryId}`,
             {
                 headers: {
@@ -173,14 +175,14 @@ export default function ItineraryDetailsPage() {
     };
 
     const handleVerifyFlight = async () => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) return;
 
         setFlightBusy("verify");
         const pending = info("Checking flight status…", { duration: 0 });
 
         try {
-            const res = await fetch(
+            const res = await sessionFetch(
                 `/api/itineraries/${params.itineraryId}/flights`,
                 {
                     method: "GET",
@@ -241,14 +243,14 @@ export default function ItineraryDetailsPage() {
         });
         if (!confirmed) return;
 
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) return;
 
         setFlightBusy("cancel");
         const pending = info("Cancelling the flight…", { duration: 0 });
 
         try {
-            const res = await fetch(
+            const res = await sessionFetch(
                 `/api/itineraries/${params.itineraryId}/flights`,
                 {
                     method: "DELETE",
@@ -308,14 +310,14 @@ export default function ItineraryDetailsPage() {
         });
         if (!confirmed) return;
 
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) return;
 
         setHotelBusy(true);
         const pending = info("Cancelling the hotel booking…", { duration: 0 });
 
         try {
-            const res = await fetch(
+            const res = await sessionFetch(
                 `/api/itineraries/${params.itineraryId}/hotels`,
                 {
                     method: "DELETE",
@@ -389,14 +391,14 @@ export default function ItineraryDetailsPage() {
         });
         if (!confirmed) return;
 
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) return;
 
         setItineraryBusy(true);
         const pending = info("Cancelling the itinerary…", { duration: 0 });
 
         try {
-            const res = await fetch(`/api/itineraries/${params.itineraryId}`, {
+            const res = await sessionFetch(`/api/itineraries/${params.itineraryId}`, {
                 method: "DELETE",
                 headers: {
                     "Content-Type": "application/json",

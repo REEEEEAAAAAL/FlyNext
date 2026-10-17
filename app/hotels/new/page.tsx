@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { clearAccessToken } from "@/app/lib/session";
@@ -35,14 +37,14 @@ export default function CreateHotelPage() {
   // Protect the page: if no access token is found, redirect to login.
   useEffect(() => {
     const fetchData = async () => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             // Redirect to login if no token found.
             router.push("/auth/login");
             return;
         }
 
-        const response = await fetch("/api/user", {
+        const response = await sessionFetch("/api/user", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -119,14 +121,14 @@ export default function CreateHotelPage() {
     const pending = info("Creating your hotel…", { duration: 0 });
 
     try {
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
       if (!token) {
           // Redirect to login if no token found.
           router.push("/auth/login");
           return;
       }
 
-      const response = await fetch("/api/user", {
+      const response = await sessionFetch("/api/user", {
           headers: {
               Authorization: `Bearer ${token}`,
           },
@@ -158,7 +160,7 @@ export default function CreateHotelPage() {
         data.append("images", item.file);
       });
 
-      const res = await fetch("/api/hotels", {
+      const res = await sessionFetch("/api/hotels", {
         method: "POST",
         headers: {
           Authorization: token ? `Bearer ${token}` : "",

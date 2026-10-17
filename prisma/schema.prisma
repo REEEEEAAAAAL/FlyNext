@@ -28,6 +28,27 @@ model User {
   flightReservations FlightReservation[]
   itineraries        Itinerary[]
   notifications      Notification[]
+  refreshSessions    RefreshSession[]
+}
+
+// Only a SHA-256 digest of an opaque, random refresh credential is persisted.
+model RefreshSession {
+  tokenHash String @id
+  familyId String
+  userId Int
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([familyId])
+  @@index([userId, expiresAt])
+}
+
+model RateLimitCounter {
+  key String @id
+  count Int
+  expiresAt DateTime
+  @@index([expiresAt])
 }
 
 model Hotel {

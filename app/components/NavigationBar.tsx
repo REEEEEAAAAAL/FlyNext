@@ -1,11 +1,13 @@
 "use client";
 
+import { getAccessToken } from "@/app/lib/session";
+
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, useEffect } from "react";
 import NotificationBadge from "@/app/components/NotificationBadge";
 import ThemeToggle from "@/app/components/ThemeToggle";
-import { clearAccessToken } from "@/app/lib/session";
+import { subscribeToAccessToken } from "@/app/lib/session";
 
 const NavigationBar = () => {
   const router = useRouter();
@@ -15,8 +17,9 @@ const NavigationBar = () => {
 
   // Check for authentication on mount and when pathname changes.
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
+    const token = getAccessToken();
     setIsAuthenticated(!!token);
+    return subscribeToAccessToken(() => setIsAuthenticated(!!getAccessToken()));
   }, [pathname]);
 
   // Close the mobile drawer whenever the route changes, so a navigation made
@@ -25,34 +28,7 @@ const NavigationBar = () => {
     setMobileMenuOpen(false);
   }, [pathname]);
 
-  const handleLogout = async () => {
-    try {
-      const token = localStorage.getItem("accessToken");
-      const res = await fetch("/api/auth/logout", {
-        method: "POST",
-        headers: {
-          Authorization: token ? `Bearer ${token}` : "",
-        },
-      });
-      /*
-       * The local session is cleared even when the server refuses, because the
-       * endpoint only revokes the refresh cookie and is documented as reachable
-       * with an empty token — so a non-`ok` answer here would otherwise leave the
-       * user permanently "logged in" with no working Logout, since nothing else on
-       * the client can drop the httpOnly refresh cookie.
-       */
-      if (!res.ok) {
-        console.error("Logout failed:", res.status);
-      }
-      clearAccessToken();
-      router.push("/auth/login");
-    } catch (error) {
-      console.error("Logout failed:", error);
-      // Same reasoning as above: a network failure must not trap the user.
-      clearAccessToken();
-      router.push("/auth/login");
-    }
-  };
+  const handleLogout = () => router.push("/auth/logout");
 
   const navLinks = [
     { name: "Home", href: "/" },

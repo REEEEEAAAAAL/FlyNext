@@ -25,7 +25,7 @@ import { cancelHotelReservation } from "@/lib/reservations";
 export const DELETE = withRoute<{ itineraryId: string }>(
 	async (request, context) => {
 		const { userId } = requireAuth(request);
-		enforceRateLimit(request, "bookingWrite");
+		await enforceRateLimit(request, "bookingWrite");
 		// Next.js 15 hands `params` over as a promise.
 		const { itineraryId: rawItineraryId } = await context.params;
 		const itineraryId = parseRouteId(rawItineraryId, "itineraryId");

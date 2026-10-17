@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -107,14 +109,14 @@ export default function HotelList() {
     // Redirect to login if no access token is found.
     useEffect(() => {
         const fetchData = async () => {
-            const token = localStorage.getItem("accessToken");
+            const token = getAccessToken();
             if (!token) {
                 // Redirect to login if no token found.
                 router.push("/auth/login");
                 return;
             }
 
-            const response = await fetch("/api/user", {
+            const response = await sessionFetch("/api/user", {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -145,8 +147,8 @@ export default function HotelList() {
             if (priceMin) params.append("priceMin", priceMin);
             if (priceMax) params.append("priceMax", priceMax);
 
-            const token = localStorage.getItem("accessToken");
-            const res = await fetch(`/api/hotels/owner?${params.toString()}`, {
+            const token = getAccessToken();
+            const res = await sessionFetch(`/api/hotels/owner?${params.toString()}`, {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },

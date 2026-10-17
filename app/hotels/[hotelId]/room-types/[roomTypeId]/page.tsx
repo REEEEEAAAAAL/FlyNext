@@ -1,5 +1,7 @@
 "use client";
 
+import { sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 
@@ -24,7 +26,7 @@ export default function RoomTypeDetailsPage() {
       setLoading(true);
       setError("");
       try {
-        const res = await fetch(`/api/hotels/${hotelId}/room-types/${roomTypeId}`, {
+        const res = await sessionFetch(`/api/hotels/${hotelId}/room-types/${roomTypeId}`, {
           method: "GET",
         });
         const data = await res.json();

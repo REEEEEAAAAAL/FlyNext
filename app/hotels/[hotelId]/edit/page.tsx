@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect, FormEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -36,13 +38,13 @@ export default function EditHotelPage() {
   // Protect the page.
   useEffect(() => {
     const fetchData = async () => {
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
       if (!token) {
         router.push("/auth/login");
         return;
       }
 
-      const response = await fetch("/api/user", {
+      const response = await sessionFetch("/api/user", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -95,8 +97,8 @@ export default function EditHotelPage() {
       setLoading(true);
       setError("");
       try {
-        const token = localStorage.getItem("accessToken");
-        const res = await fetch(`/api/hotels/${hotelId}`, {
+        const token = getAccessToken();
+        const res = await sessionFetch(`/api/hotels/${hotelId}`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -188,13 +190,13 @@ export default function EditHotelPage() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
       if (!token) {
         router.push("/auth/login");
         return;
       }
 
-      const response = await fetch("/api/user", {
+      const response = await sessionFetch("/api/user", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -225,7 +227,7 @@ export default function EditHotelPage() {
         }
       });
 
-      const res = await fetch(`/api/hotels/${hotelId}`, {
+      const res = await sessionFetch(`/api/hotels/${hotelId}`, {
         method: "PUT",
         headers: { Authorization: token ? `Bearer ${token}` : "" },
         body: data,
@@ -288,8 +290,8 @@ export default function EditHotelPage() {
 
     const pending = info("Deleting the hotel…", { duration: 0 });
     try {
-      const token = localStorage.getItem("accessToken");
-      const res = await fetch(`/api/hotels/${hotelId}`, {
+      const token = getAccessToken();
+      const res = await sessionFetch(`/api/hotels/${hotelId}`, {
         method: "DELETE",
         headers: { Authorization: token ? `Bearer ${token}` : "" },
       });

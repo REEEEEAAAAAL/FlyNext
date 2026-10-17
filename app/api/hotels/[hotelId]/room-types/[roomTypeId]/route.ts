@@ -1,41 +1,4 @@
-/**
- * `GET    /api/hotels/[hotelId]/room-types/[roomTypeId]`
- * `PUT    /api/hotels/[hotelId]/room-types/[roomTypeId]`
- * `DELETE /api/hotels/[hotelId]/room-types/[roomTypeId]`
- *
- * Response contract, relied on by
- * `app/hotels/[hotelId]/room-types/[roomTypeId]/page.tsx` (public, no headers)
- * and `.../edit/page.tsx`:
- * - `200 { roomType, availabilityRecords }` — `reservations` stays nested
- *   inside `roomType`, while `availabilityRecords` is a top-level key
- * - `200 { message: "Room type updated", roomType: { … } }`
- * - `200 { message: "Room type deleted" }`
- * - `400`, `401`, `403`, `404`, `429 { error: string }`
- *
- * Three properties hold across the handlers:
- *
- * 1. `hotelId` is asserted, not assumed. `PUT` and `DELETE` verify
- *    `roomType.hotelId === hotelId` before touching anything, so owning hotel A
- *    does not authorise editing a room type that belongs to hotel B — pairing an
- *    owned `hotelId` with a foreign `roomTypeId` is a `404`.
- *
- * 2. `GET` materialises the calendar in two queries. The window is read with
- *    one `findMany` and the gaps filled with one `createMany({ skipDuplicates })`,
- *    instead of a per-day read and insert against a remote database on every page
- *    view. `skipDuplicates` makes a concurrent first view harmless.
- *
- * 3. `guestName` is synthesised. The owner's reservations panel renders
- *    `reservation.guestName`, which is not a column on `HotelReservation`; it is
- *    joined from the related user.
- *
- * 4. `GET` answers the owner's `checkIn`/`checkOut` filter. The calendar's full
- *    horizon is still materialised — the rows have to exist for a booking to
- *    decrement — but only the requested days are returned.
- *
- * A capacity change on `PUT` propagates to the nights that are still at full
- * capacity, so the owner's availability control applies to the dates on sale
- * rather than only to rows created afterwards.
- */
+/** Public room details omit guest information. Owner bookings use the authenticated reservations subroute. Calendar writes remain tracked under B10 (stage 4). */
 
 import { requireAuth } from "@/lib/api/auth";
 import { badRequest, forbidden, notFound } from "@/lib/api/errors";
@@ -54,14 +17,12 @@ import {
 import { DEFAULT_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
 import type {
 	AvailabilityRecordDto,
-	RoomTypeReservationDto,
 	RoomTypeSummary,
 } from "@/types";
 
-/** Shape returned to the client: a room type with its owner-facing bookings. */
+/** Explicit public projection: guest reservations are served separately. */
 interface RoomTypeDetail extends Omit<RoomTypeSummary, "images"> {
 	images: unknown;
-	reservations: RoomTypeReservationDto[];
 }
 
 /**
@@ -73,20 +34,6 @@ interface RoomTypeDetail extends Omit<RoomTypeSummary, "images"> {
 async function requireRoomTypeOfHotel(hotelId: number, roomTypeId: number) {
 	const roomType = await prisma.roomType.findUnique({
 		where: { id: roomTypeId },
-		include: {
-			reservations: {
-				select: {
-					id: true,
-					userId: true,
-					checkIn: true,
-					checkOut: true,
-					price: true,
-					status: true,
-					user: { select: { firstName: true, lastName: true } },
-				},
-				orderBy: { checkIn: "asc" },
-			},
-		},
 	});
 	if (roomType === null || roomType.hotelId !== hotelId) {
 		throw notFound("Room type not found");
@@ -106,26 +53,6 @@ async function requireOwnedHotel(hotelId: number, userId: number) {
 	return hotel;
 }
 
-/** Join the guest's name onto a reservation row. */
-function toReservationDto(row: {
-	id: number;
-	userId: number;
-	checkIn: Date;
-	checkOut: Date;
-	price: number;
-	status: RoomTypeReservationDto["status"];
-	user: { firstName: string; lastName: string };
-}): RoomTypeReservationDto {
-	return {
-		id: row.id,
-		userId: row.userId,
-		checkIn: row.checkIn,
-		checkOut: row.checkOut,
-		price: row.price,
-		status: row.status,
-		guestName: `${row.user.firstName} ${row.user.lastName}`.trim(),
-	};
-}
 
 /**
  * The window of availability rows to return.
@@ -228,7 +155,6 @@ export const GET = withRoute<{ hotelId: string; roomTypeId: string }>(
 			images: roomType.images,
 			currentAvailability: roomType.currentAvailability,
 			hotelId: roomType.hotelId,
-			reservations: roomType.reservations.map(toReservationDto),
 		};
 
 		return jsonOk({ roomType: detail, availabilityRecords });
@@ -241,7 +167,7 @@ export const PUT = withRoute<{ hotelId: string; roomTypeId: string }>(
 		const hotelId = parseRouteId(rawHotelId, "hotelId");
 		const roomTypeId = parseRouteId(rawRoomTypeId, "roomTypeId");
 		const { userId } = requireAuth(request);
-		enforceRateLimit(request, "bookingWrite");
+		await enforceRateLimit(request, "bookingWrite");
 
 		await requireOwnedHotel(hotelId, userId);
 		await requireRoomTypeOfHotel(hotelId, roomTypeId);
@@ -365,7 +291,7 @@ export const DELETE = withRoute<{ hotelId: string; roomTypeId: string }>(
 		const hotelId = parseRouteId(rawHotelId, "hotelId");
 		const roomTypeId = parseRouteId(rawRoomTypeId, "roomTypeId");
 		const { userId } = requireAuth(request);
-		enforceRateLimit(request, "bookingWrite");
+		await enforceRateLimit(request, "bookingWrite");
 
 		await requireOwnedHotel(hotelId, userId);
 		await requireRoomTypeOfHotel(hotelId, roomTypeId);

@@ -19,38 +19,78 @@ Current unit files cover booking display, flight direction projection, upload pl
 The direction suite mocks unrelated Prisma infrastructure so importing its functions cannot load application credentials.
 Add future database-free suites to `unitTestFiles` in `vitest.shared.ts`; all other suites belong to the explicit integration command.
 
-## Dedicated local integration database
+## Preferred integration target: enrolled Neon test database
 
-Prerequisite: native PostgreSQL tools (`initdb`, `pg_ctl`, `createdb`, `psql`) on PATH.
-Alternatively set `FLYNEXT_PG_BIN` to their installation directory. The helper uses existing tools only;
-it does not install software, alter an existing PostgreSQL service or require Docker.
+The current integration environment is the existing Neon `flynext_test` database configured in
+ignored `.env.test`. Docker Desktop is optional. The runner always takes `DATABASE_URL` from that
+file, overriding shell/application values without editing the file. `.env.test.local` never overrides it.
+There is no silent fallback when the selected file or target is unsafe.
 
 ```bash
+npm run test:db:verify
+npm run test:integration
+```
+
+Integration is destructive: repository migrations run before the suite, factories initialize synthetic
+data, and application tables are TRUNCATEd between cases. Only the specifically enrolled target is
+approved for these operations. Generic `seed`, `seed:prod`, raw SQL and unknown remote targets remain refused.
+Do not run a second suite or use the same test database interactively while this suite is running.
+
+Enrollment is a deliberate one-time operator action, after authorization to clear the exact target:
+
+```bash
+# Only after checking ownership and confirming this exact database is disposable:
+node node_modules/tsx/dist/cli.mjs scripts/neon-test-db.ts enroll --confirm-reset=flynext_test
+```
+
+The current target has already been enrolled; do not enroll it again. Enrollment checks the exact Neon
+host/port/database/role, TLS, non-deployment context, actual PostgreSQL database name/OID/owner/current role,
+absence of an unrelated marker and absence of unknown project-external tables. It compares physical database
+identity with all available business `.env`, `.env.local`, development and production env files, including direct
+and pooled URL aliases. A test filename, `_test` suffix or reset environment flag is never enough.
+The current test and business databases have different database names on the same Neon endpoint and role;
+this is database-level separation, not a separate Neon project or least-privilege role. Do not treat that role
+as safe for arbitrary administrative commands.
+
+Enrollment adds a random database comment and writes ignored `.neon-test-approval.json` containing only
+an identity fingerprint, database OID and matching UUID, without credentials. Every migration/TRUNCATE
+rechecks the configured target, business exclusion and the independently read database marker/OID/current role.
+Unknown remote databases, changed endpoints/roles/database names, missing/mismatched markers, non-public
+schemas, routing overrides, missing TLS and production/deployment context are rejected. Recreated databases
+fail their old OID/marker checks. Investigate rather than copying an approval to bypass a failure.
+Business configurations from other deployment secret stores must also be checked by the operator at enrollment;
+the local tool can only compare configurations available on this machine.
+
+Prisma stays at **6.3.1**. Integration schema setup uses the existing transactional SQL migration runner through
+the corresponding Neon **direct** endpoint, derived only by removing `-pooler` from the already verified host.
+The original pooled `DATABASE_URL` is preserved for application/test queries. Both connections must report the
+same database identity. No Prisma 7 configuration or driver-adapter upgrade is required.
+See [Prisma's PgBouncer guidance](https://www.prisma.io/docs/orm/prisma-client/setup-and-configuration/databases-connections/pgbouncer)
+for the reason schema operations use a direct connection.
+
+The outer integration runner rejects production/deployment context before starting Vitest; setup repeats the
+checks before connecting and at write boundaries. Tests blank real Cloudinary credentials and force built-in AFS.
+They never upload real images or book remote flights. Keep env files and the enrollment record out of Git,
+Docker build context, logs and screenshots. Never print full URLs or errors containing connection credentials.
+
+## Optional native local PostgreSQL
+
+If explicitly choosing the local alternative, native PostgreSQL tools must be on PATH (or use `FLYNEXT_PG_BIN`).
+The existing helper manages only its own `.local-test-db/` cluster, generated `.env.test.local`, literal loopback
+port 55432, dedicated `flynext_test` role/database and independent UUID marker. It never controls Neon.
+
+```powershell
 npm run test:db:start
 npm run test:db:check
+$env:FLYNEXT_TEST_ENV = "local"
 npm run test:integration
+Remove-Item Env:FLYNEXT_TEST_ENV
 npm run test:db:stop
 ```
 
-The first start creates a NEW cluster under ignored `.local-test-db/`, listens only on 127.0.0.1:55432,
-creates the dedicated `flynext_test` database/role, and generates random credentials and a UUID in
-ignored `.env.test.local`. SCRAM authentication is required. Existing `.env` and `.env.test` remain untouched.
-Start/check/stop control only the cluster whose local identity metadata matches; no command drops a database or volume.
-Partial initialization is preserved for diagnosis, not automatically deleted or adopted.
-
-Integration setup checks before connecting: non-production/non-deployment context; explicit
-`FLYNEXT_ALLOW_DATABASE_RESET=1` in `.env.test.local`; literal loopback host; dedicated port/name/role;
-and an identity UUID. It then reads PostgreSQL's database comment and matches that identity BEFORE
-migrations or TRUNCATE. The migration and reset helpers repeat that verification at the write boundary.
-A name ending in `_test` by itself is insufficient.
-
-Tests apply repository migrations and clear all application tables between cases. This is authorized
-only for the newly created disposable target. Image credentials are blanked and AFS is forced in-process;
-the integration suite must not upload real assets or book remote flights.
-The checked-in `.env.test.example` documents the format; use the helper rather than copying a remote URL.
-
-If PostgreSQL tools, loopback networking or process permissions are unavailable, stop and record the
-blocker. Never fall back to a remote database or disable the guard to obtain a green test result.
+Only `FLYNEXT_TEST_ENV=local` selects this alternative. A missing/invalid Neon enrollment never starts local
+PostgreSQL automatically. Docker is another optional development deployment; it is not a prerequisite for tests.
+The local cluster remains stopped unless explicitly started.
 
 ## Destructive demo fixture
 
@@ -65,8 +105,7 @@ it does NOT make the destructive fixture safe for production. The compiled comma
 so stale local dist output cannot bypass the new guard. The default seed command intentionally refuses without opt-in.
 
 `npm run seed:reference` adds reference data and may create/update the designated owner account.
-It remains a database write requiring an explicitly approved target. No seed or migration should be run
-against the existing remote databases during routine verification. Do not execute the SQL fixture directly.
+It remains a database write requiring an explicitly approved target. Only the guarded integration runner may migrate and initialize the enrolled Neon test target during verification; business databases remain prohibited. Do not execute the SQL fixture directly.
 
 ## Docker and deployment
 
@@ -88,4 +127,27 @@ not the source of truth. Never use the reset fixture to initialize a production 
 ## Stage boundary
 
 Every stage ends with actual command/results, diff review and updates to IMPROVEMENT_PLAN/PROGRESS.
-No automatic commit/push/merge/deploy. Stage 3 starts with the still-open B01 guest-data exposure.
+No automatic commit/push/merge/deploy. Stage 3 started with B01; see PROGRESS for actual regression results.
+
+## Stage-3 session and API changes
+
+Public room details contain only room metadata and availability. Owner guest data is served by
+`GET /api/hotels/[hotelId]/room-types/[roomTypeId]/reservations`, requiring the current hotel owner,
+matching room/hotel IDs and `private, no-store`. The owner editor uses this separate endpoint on load and after cancellation.
+The room GET inventory side effect remains B10 for stage 4.
+
+`20261017150000_session_security` adds RefreshSession and RateLimitCounter without altering existing business columns.
+Apply it to other environments only after separate target approval. Existing JWT refresh cookies are intentionally
+invalid: users sign in again. Refresh credentials are random opaque values, only their hashes are stored; rotation,
+replay revocation and logout share a per-family PostgreSQL transaction lock. The absolute session expiry is preserved.
+Access JWTs live only in browser memory; page reload recovers via the HttpOnly cookie. Login/logout wait for in-flight refresh responses; Web Locks coordinate cookie writers between tabs where supported. GET can recover/retry once;
+writes are never automatically replayed. A lost write response requires checking the booking/itinerary list.
+JWT bare numeric durations now mean seconds, matching cookie lifetime.
+
+Production auth/write rate budgets use atomic PostgreSQL counters; catalogue reads use bounded process memory.
+Limits are namespaced by rule and identity. Production cannot disable limits through RATE_LIMIT_DISABLED.
+For a dedicated shared-store regression, tests explicitly select FLYNEXT_RATE_LIMIT_STORE=database.
+The current deployment proxy must supply trustworthy forwarding headers; do not expose a direct server while trusting arbitrary client headers.
+Image writes accept bundled defaults or the configured Cloudinary delivery origin, max 12 images/25MB per request
+and 5MB per file. Failed uploads/database writes compensate only new request assets, never retained images.
+Cleanup failure is logged for operator follow-up; real provider upload/deletion has not been exercised in tests.

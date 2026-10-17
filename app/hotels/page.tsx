@@ -1,5 +1,7 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -52,7 +54,7 @@ export default function HotelSearchPage() {
         const fetchAllHotels = async () => {
             setLoading(true);
             try {
-                const res = await fetch(`/api/hotels`, {
+                const res = await sessionFetch(`/api/hotels`, {
                     method: "GET",
                 });
 
@@ -75,7 +77,7 @@ export default function HotelSearchPage() {
 
     // Redirect to login if not logged in
     const ensureLoggedIn = (): boolean => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             router.push("/auth/login");
             return false;
@@ -86,7 +88,7 @@ export default function HotelSearchPage() {
     // Fetch city suggestions from the backend
     const fetchCitySuggestions = async (query: string): Promise<City[]> => {
         try {
-            const res = await fetch(
+            const res = await sessionFetch(
                 `/api/locations/cities?q=${encodeURIComponent(query)}`,
                 {
                     method: "GET",
@@ -135,7 +137,7 @@ export default function HotelSearchPage() {
                 checkOut,
             }).toString();
 
-            const res = await fetch(`/api/hotels?${query}`, {
+            const res = await sessionFetch(`/api/hotels?${query}`, {
                 method: "GET",
             });
 
@@ -200,9 +202,9 @@ export default function HotelSearchPage() {
         // a timer, so a slow booking still says what is happening.
         const pending = info("Reserving your room…", { duration: 0 });
 
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         try {
-            const res = await fetch("/api/hotels/book", {
+            const res = await sessionFetch("/api/hotels/book", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -244,7 +246,7 @@ export default function HotelSearchPage() {
                     checkOut,
                 }).toString();
 
-                const refresh = await fetch(`/api/hotels?${query}`, {
+                const refresh = await sessionFetch(`/api/hotels?${query}`, {
                     method: "GET",
                 });
 
@@ -461,7 +463,7 @@ export default function HotelSearchPage() {
                             setCheckOut("");
                             setError("");
                             setLoading(true);
-                            fetch(`/api/hotels`)
+                            sessionFetch(`/api/hotels`)
                                 .then((res) => res.json())
                                 .then((data) => {
                                     setHotels(data.hotels || []);
