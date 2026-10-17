@@ -42,7 +42,7 @@
 	"devDependencies": {
 		"@tailwindcss/postcss": "^4",
 		"@types/jsonwebtoken": "^9.0.10",
-		"@types/node": "^20",
+		"@types/node": "^20.19.43",
 		"@types/react": "^19",
 		"@types/react-dom": "^19",
 		"prisma": "^6.3.1",
@@ -58,5 +58,11 @@
 		"next": {
 			"postcss": "8.5.23"
 		}
+	},
+	"allowScripts": {
+		"@prisma/client@6.3.1": true,
+		"@prisma/engines@6.3.1": true,
+		"prisma@6.3.1": true,
+		"esbuild@0.28.2": true
 	}
 }
