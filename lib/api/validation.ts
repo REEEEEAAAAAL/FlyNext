@@ -245,10 +245,10 @@ export function parseOptionalNumber(
 /* Dates                                                                      */
 /* -------------------------------------------------------------------------- */
 
-/** Normalise a date to local midnight, matching the availability rows. */
+/** Normalise a date to UTC midnight, matching the availability rows. */
 export function atMidnight(date: Date): Date {
 	const copy = new Date(date.getTime());
-	copy.setHours(0, 0, 0, 0);
+	copy.setUTCHours(0, 0, 0, 0);
 	return copy;
 }
 
@@ -287,7 +287,7 @@ export function availabilityHorizon(today: Date = new Date()): {
  *
  * The single definition of "bookable", shared by the hotel booking route and its
  * tests. It is a range test on the calendar day rather than a comparison of
- * timestamps: every availability row and every parsed stay is local midnight, and
+ * timestamps: every availability row and every parsed stay is UTC midnight, and
  * comparing instants would make the answer depend on the reader's time zone.
  *
  * Past nights are not bookable, and the horizon is inclusive so the last night of
@@ -302,30 +302,17 @@ export function isWithinAvailabilityHorizon(
 	return day >= start.getTime() && day <= end.getTime();
 }
 
-/** `date` shifted by `days`, keeping the local wall-clock time. */
+/** Shift a date by whole days while keeping UTC calendar time. */
 export function addDays(date: Date, days: number): Date {
 	const copy = new Date(date.getTime());
-	copy.setDate(copy.getDate() + days);
+	copy.setUTCDate(copy.getUTCDate() + days);
 	return copy;
 }
 
 /** Calendar-date shape accepted from clients. */
 const DATE_ONLY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-/**
- * Parse a `YYYY-MM-DD` date into local midnight.
- *
- * The format is required rather than merely accepted. `new Date()` is lenient in
- * two ways that both matter for a booking: it rolls impossible days forward
- * (`"2026-02-30"` becomes 2 March) and it parses bare numbers as years (`"1"` is
- * 2001). A stay would then be recorded for a night the traveller never chose, and
- * the availability rows would be decremented for that night. The day is therefore
- * checked back against the parsed result, which is what rejects the rollover.
- *
- * Local midnight is the granularity the availability rows are stored at, so a
- * `Date` built from the parts is already aligned; the UTC-parsed
- * `new Date("2026-03-01")` would land on the previous day west of UTC.
- */
+/** Parse a real calendar date as UTC midnight, independent of server time zone. */
 export function parseDateOnly(raw: string, field: string): Date {
 	const match = DATE_ONLY_PATTERN.exec(raw.trim());
 	if (match === null) {
@@ -334,11 +321,11 @@ export function parseDateOnly(raw: string, field: string): Date {
 	const year = Number(match[1]);
 	const month = Number(match[2]);
 	const day = Number(match[3]);
-	const parsed = new Date(year, month - 1, day);
+	const parsed = new Date(Date.UTC(year, month - 1, day));
 	if (
-		parsed.getFullYear() !== year ||
-		parsed.getMonth() !== month - 1 ||
-		parsed.getDate() !== day
+		parsed.getUTCFullYear() !== year ||
+		parsed.getUTCMonth() !== month - 1 ||
+		parsed.getUTCDate() !== day
 	) {
 		throw badRequest(`Parameter "${field}" is not a real calendar date`);
 	}
@@ -365,6 +352,7 @@ export function parseStayRange(
 	const nights = Math.round(
 		(checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)
 	);
+	if (nights > AVAILABILITY_HORIZON_DAYS + 1) throw badRequest("The selected stay exceeds the booking horizon");
 	return { checkIn, checkOut, nights };
 }
 
@@ -374,7 +362,7 @@ export function eachNight(start: Date, end: Date): Date[] {
 	const cursor = atMidnight(start);
 	while (cursor.getTime() < end.getTime()) {
 		nights.push(new Date(cursor.getTime()));
-		cursor.setDate(cursor.getDate() + 1);
+		cursor.setUTCDate(cursor.getUTCDate() + 1);
 	}
 	return nights;
 }
@@ -385,7 +373,7 @@ export function eachDateInclusive(start: Date, end: Date): Date[] {
 	const cursor = atMidnight(start);
 	while (cursor.getTime() <= end.getTime()) {
 		dates.push(new Date(cursor.getTime()));
-		cursor.setDate(cursor.getDate() + 1);
+		cursor.setUTCDate(cursor.getUTCDate() + 1);
 	}
 	return dates;
 }

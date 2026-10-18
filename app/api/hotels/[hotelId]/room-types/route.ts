@@ -1,3 +1,4 @@
+import { money } from "@/lib/booking-locks";
 /**
  * `GET  /api/hotels/[hotelId]/room-types` — list a hotel's room types (public).
  * `POST /api/hotels/[hotelId]/room-types` — create one (owner only, multipart).
@@ -80,7 +81,7 @@ export const POST = withRoute<{ hotelId: string }>(async (request, context) => {
 		throw badRequest("Missing required fields");
 	}
 
-	const price = requireFormNumber(formData, "pricePerNight", { min: 0 });
+	const price = money(requireFormNumber(formData, "pricePerNight", { min: 0 }));
 	const availability = Number(currentAvailability);
 	if (!Number.isInteger(availability) || availability < 0) {
 		throw badRequest(

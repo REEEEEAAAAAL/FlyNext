@@ -24,7 +24,7 @@ import { badRequest, conflict, forbidden, notFound } from "@/lib/api/errors";
 import { withRoute } from "@/lib/api/handler";
 import { notify } from "@/lib/api/notify";
 import { enforceRateLimit } from "@/lib/api/rate-limit";
-import { jsonCreated, jsonMessage } from "@/lib/api/response";
+import { jsonMessage } from "@/lib/api/response";
 import {
 	eachNight,
 	isWithinAvailabilityHorizon,
@@ -33,77 +33,11 @@ import {
 	readId,
 	readString,
 } from "@/lib/api/validation";
-import { DEFAULT_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
+import { idempotentWrite } from "@/lib/api/idempotency";
+import { lockTraveller, lockRoom, money } from "@/lib/booking-locks";
+import { materializeStay } from "@/lib/hotel-inventory";
 import { cancelHotelReservation } from "@/lib/reservations";
-
-/** Prisma client bound to an open transaction. */
-type TransactionClient = Parameters<
-	Parameters<typeof prisma.$transaction>[0]
->[0];
-
-/**
- * Give every night of a stay an availability row, when the calendar has none.
- *
- * The calendar is meant to be materialised by whoever creates the room type, and
- * `POST .../room-types` does exactly that. This is the safety net for the ways
- * that materialisation can be missing underneath a stay that is otherwise
- * perfectly bookable — a room type seeded straight from SQL, a calendar written
- * before the horizon was widened, a database restored from a stale dump — each of
- * which otherwise reached the guest as
- * `"The selected date is not supported for booking."` on a hotel the site was
- * actively advertising.
- *
- * Only the nights that are genuinely absent are inserted, and `skipDuplicates`
- * treats a concurrent booking materialising the same night as an ignorable
- * conflict rather than a failed request.
- *
- * Callers must have established that the whole stay is inside the booking
- * horizon; the range test lives in `isWithinAvailabilityHorizon`, so this only
- * ever fills in dates the site promised it would sell.
- */
-async function materializeMissingNights(
-	tx: TransactionClient,
-	roomTypeId: number,
-	nights: readonly Date[],
-	capacity: number
-): Promise<void> {
-	const existing = await tx.roomAvailabilityRecord.findMany({
-		where: { roomTypeId, date: { in: [...nights] } },
-		select: { date: true },
-	});
-	const present = new Set(existing.map((row) => row.date.getTime()));
-	const missing = nights.filter((night) => !present.has(night.getTime()));
-	if (missing.length === 0) {
-		return;
-	}
-
-	await tx.roomAvailabilityRecord.createMany({
-		data: missing.map((date) => ({ roomTypeId, date, availability: capacity })),
-		skipDuplicates: true,
-	});
-}
-
-/**
- * The capacity a newly materialised night should start at.
- *
- * `RoomAvailabilityRecord.availability` is the number of rooms left on one night
- * and `RoomType.currentAvailability` is the figure the owner configured, so the
- * configured value is right when nothing is on the calendar yet. Once a calendar
- * exists, its latest night is the better estimate — it carries the owner's most
- * recent capacity change as well as any bookings against that night, whereas a
- * booking never updates `currentAvailability`. The smaller of the two is taken so
- * that a materialised night can never advertise more rooms than either figure
- * allows.
- */
-function startingCapacity(
-	latestNight: number | null,
-	currentAvailability: number
-): number {
-	if (latestNight === null) {
-		return currentAvailability;
-	}
-	return Math.min(latestNight, currentAvailability);
-}
 
 export const POST = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
@@ -135,20 +69,6 @@ export const POST = withRoute(async (request) => {
 
 	const { checkIn, checkOut, nights } = parseStayRange(checkInRaw, checkOutRaw);
 
-	// The room type must exist and belong to the hotel being booked.
-	const roomType = await prisma.roomType.findUnique({
-		where: { id: roomTypeId },
-		select: {
-			id: true,
-			hotelId: true,
-			pricePerNight: true,
-			currentAvailability: true,
-		},
-	});
-	if (roomType === null || roomType.hotelId !== hotelId) {
-		throw notFound("Room type not found");
-	}
-
 	const dates = eachNight(checkIn, checkOut);
 
 	/*
@@ -159,52 +79,20 @@ export const POST = withRoute(async (request) => {
 	 * fixed 60 nights from today rather than "two months" — which, from the 31st of
 	 * a month, is a shorter window than from the 1st.
 	 */
+
+	return idempotentWrite(request, userId, "hotel-book", body, async tx => {
 	const unsupported = dates.some((night) => !isWithinAvailabilityHorizon(night));
 	if (unsupported) {
 		throw badRequest("The selected date is not supported for booking.");
 	}
 
-	const hotel = await prisma.hotel.findUnique({
-		where: { id: hotelId },
-		select: { ownerId: true, name: true },
-	});
-
-	/*
-	 * One transaction claims every night at once.
-	 *
-	 * The claim is a single conditional `updateMany`: it decrements exactly the
-	 * rows that still have a room left, and compares how many it touched against
-	 * how many nights the stay spans. A short count means at least one night was
-	 * taken by a concurrent request, and because the comparison happens inside the
-	 * transaction the whole claim rolls back — so a partially booked stay can
-	 * never persist, and one statement is enough for the common case instead of
-	 * two round-trips per night.
-	 *
-	 * Any night the calendar has no row for is materialised first, from the room
-	 * type's own capacity. Filling them in before the claim means the guest gets
-	 * the same "no rooms left" answer for a night that was never opened as for one
-	 * that sold out, instead of being told their dates are unsupported on a date
-	 * range the site offers.
-	 *
-	 * The owner's notification is part of the same transaction: a booking that
-	 * committed while its notification failed would report an error to the client,
-	 * which would invite a retry that books and decrements a second time.
-	 */
-	const reservation = await prisma.$transaction(async (tx) => {
-		// The latest night already on the calendar is the best available proxy for
-		// the owner's current capacity, and `null` when there is no calendar at all.
-		const latest = await tx.roomAvailabilityRecord.findFirst({
-			where: { roomTypeId, date: { lte: checkOut } },
-			orderBy: { date: "desc" },
-			select: { availability: true },
-		});
-		await materializeMissingNights(
-			tx,
-			roomTypeId,
-			dates,
-			startingCapacity(latest?.availability ?? null, roomType.currentAvailability)
-		);
-
+		await lockTraveller(tx, userId);
+		await lockRoom(tx, roomTypeId);
+		const roomType = await tx.roomType.findUnique({ where: { id: roomTypeId } });
+		if (!roomType || roomType.hotelId !== hotelId) throw notFound("Room type not found");
+		const hotel = await tx.hotel.findUnique({ where: { id: hotelId }, select: { ownerId: true, name: true } });
+		const available = await materializeStay(tx, roomType, checkIn, checkOut);
+		if (available.some(row => row.availability < 1)) throw conflict("No rooms available for the selected booking period.");
 		const claimed = await tx.roomAvailabilityRecord.updateMany({
 			where: {
 				roomTypeId,
@@ -224,7 +112,7 @@ export const POST = withRoute(async (request) => {
 				roomTypeId,
 				checkIn,
 				checkOut,
-				price: roomType.pricePerNight * nights,
+				price: money(money(roomType.pricePerNight) * nights),
 				status: "CONFIRMED",
 			},
 		});
@@ -238,12 +126,7 @@ export const POST = withRoute(async (request) => {
 			});
 		}
 
-		return created;
-	}, DEFAULT_TRANSACTION_OPTIONS);
-
-	return jsonCreated({
-		message: "Hotel reservation created successfully.",
-		reservation,
+		return { status: 201, body: { message: "Hotel reservation created successfully.", reservation: created } };
 	});
 });
 

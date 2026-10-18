@@ -19,11 +19,12 @@ import { enforceRateLimit } from "@/lib/api/rate-limit";
  */
 
 import { requireAuth } from "@/lib/api/auth";
-import { forbidden, notFound } from "@/lib/api/errors";
+import { conflict, forbidden, notFound } from "@/lib/api/errors";
 import { withRoute } from "@/lib/api/handler";
 import { jsonMessage, jsonOk } from "@/lib/api/response";
 import { parseRouteId } from "@/lib/api/validation";
-import { prisma } from "@/lib/prisma";
+import { lockTraveller } from "@/lib/booking-locks";
+import { DEFAULT_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
 import { cancelFlightReservation, cancelHotelReservation } from "@/lib/reservations";
 import type { ItineraryDetail } from "@/types";
 
@@ -81,73 +82,30 @@ export const DELETE = withRoute<{ itineraryId: string }>(
 		const { itineraryId: rawItineraryId } = await context.params;
 		const itineraryId = parseRouteId(rawItineraryId, "itineraryId");
 
-		const itinerary = await prisma.itinerary.findFirst({
-			where: { id: itineraryId, userId },
-			select: {
-				id: true,
-				status: true,
-				// The reservation prices are needed to re-price the itinerary from
-				// what actually remains confirmed.
-				flight: { select: { id: true, price: true, status: true } },
-				hotel: { select: { id: true, price: true, status: true } },
-				totalPrice: true,
-			},
-		});
+		const itinerary = await prisma.$transaction(async tx => {
+			await lockTraveller(tx, userId);
+			const row = await tx.itinerary.findFirst({ where: { id: itineraryId, userId }, select: { id: true, status: true, flight: { select: { id: true, status: true } }, hotel: { select: { id: true, status: true } } } });
+			if (row && row.status !== "CANCELLED") await tx.itinerary.update({ where: { id: itineraryId }, data: { cancellationRequested: true } });
+			return row;
+		}, DEFAULT_TRANSACTION_OPTIONS);
 		if (itinerary === null) {
 			throw forbidden("You do not have access to this itinerary");
 		}
 
-		// AFS authorises cancellation by passenger surname, so the user record
-		// must exist before any flight can be released.
-		let passengerLastName: string | null = null;
+		if (itinerary.status === "CANCELLED") return jsonMessage("Itinerary and all related bookings canceled successfully", 200);
 		if (itinerary.flight !== null && itinerary.flight.status === "CONFIRMED") {
-			const user = await prisma.user.findUnique({
-				where: { id: userId },
-				select: { lastName: true },
-			});
-			if (user === null) {
-				throw notFound("User not found");
-			}
-			passengerLastName = user.lastName;
-		}
-
-		if (itinerary.flight !== null && passengerLastName !== null) {
-			await cancelFlightReservation(itinerary.flight.id, passengerLastName);
+			await cancelFlightReservation(itinerary.flight.id);
 		}
 		if (itinerary.hotel !== null && itinerary.hotel.status === "CONFIRMED") {
 			await cancelHotelReservation(itinerary.hotel.id);
 		}
 
-		/*
-		 * Close the itinerary out from the state the bookings are actually in, not
-		 * from the assumption that both cancellations just succeeded. Each helper
-		 * is idempotent: a leg that was already cancelled had its price removed from
-		 * the total by the call that cancelled it, so zeroing the total outright
-		 * would understate an itinerary that still holds a confirmed booking. The
-		 * rows are re-read because the values loaded above predate the cancels.
-		 */
-		const [flightRow, hotelRow] = await Promise.all([
-			itinerary.flight === null
-				? null
-				: prisma.flightReservation.findUnique({
-						where: { id: itinerary.flight.id },
-						select: { price: true, status: true },
-					}),
-			itinerary.hotel === null
-				? null
-				: prisma.hotelReservation.findUnique({
-						where: { id: itinerary.hotel.id },
-						select: { price: true, status: true },
-					}),
-		]);
-		const remaining =
-			(flightRow?.status === "CONFIRMED" ? flightRow.price : 0) +
-			(hotelRow?.status === "CONFIRMED" ? hotelRow.price : 0);
-
-		await prisma.itinerary.update({
-			where: { id: itineraryId },
-			data: { status: "CANCELLED", totalPrice: remaining },
-		});
+		await prisma.$transaction(async tx => {
+			await lockTraveller(tx, userId);
+			const current = await tx.itinerary.findUniqueOrThrow({ where: { id: itineraryId }, include: { flight: true, hotel: true } });
+			if (current.flight?.status === "CONFIRMED" || current.hotel?.status === "CONFIRMED") throw conflict("Some reservations still require cancellation; retry this request");
+			await tx.itinerary.update({ where: { id: itineraryId }, data: { status: "CANCELLED", totalPrice: 0, cancellationRequested: false } });
+		}, DEFAULT_TRANSACTION_OPTIONS);
 
 		return jsonMessage(
 			"Itinerary and all related bookings canceled successfully",

@@ -1,5 +1,7 @@
 "use client";
 
+import { formatStayDate } from "@/app/lib/booking-display";
+
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
@@ -296,17 +298,13 @@ export default function ItineraryListPage() {
                                             <span className="font-medium">
                                                 Check-in:
                                             </span>{" "}
-                                            {formatDate(
-                                                itinerary.hotel.checkIn
-                                            )}
+                                            {formatStayDate(itinerary.hotel.checkIn)}
                                         </p>
                                         <p className="text-gray-700 dark:text-zinc-200">
                                             <span className="font-medium">
                                                 Check-out:
                                             </span>{" "}
-                                            {formatDate(
-                                                itinerary.hotel.checkOut
-                                            )}
+                                            {formatStayDate(itinerary.hotel.checkOut)}
                                         </p>
                                     </div>
                                 )}

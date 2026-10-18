@@ -1,5 +1,6 @@
 "use client";
 
+import { acknowledgeBooking, bookingRequest } from "@/app/lib/booking-request";
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
@@ -24,6 +25,10 @@ interface RoomType {
     amenities: string | null;
     pricePerNight: number;
     currentAvailability: number;
+    availableRooms?: number | null;
+    nights?: number | null;
+    stayTotal?: number | null;
+    currency?: string;
 }
 
 interface City {
@@ -38,6 +43,7 @@ export default function HotelSearchPage() {
     const [city, setCity] = useState("");
     const [checkIn, setCheckIn] = useState("");
     const [checkOut, setCheckOut] = useState("");
+    const [availabilityStay, setAvailabilityStay] = useState("");
     const [hotels, setHotels] = useState<Hotel[]>([]);
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
@@ -64,6 +70,7 @@ export default function HotelSearchPage() {
                 } else {
                     const data = await res.json();
                     setHotels(data.hotels || []);
+                    setAvailabilityStay("");
                 }
             } catch (err) {
                 setError("An error occurred while fetching hotels.");
@@ -147,6 +154,7 @@ export default function HotelSearchPage() {
             } else {
                 const data = await res.json();
                 setHotels(data.hotels || []);
+                setAvailabilityStay(`${checkIn}/${checkOut}`);
             }
         } catch (err) {
             setError("An error occurred while searching for hotels.");
@@ -204,16 +212,12 @@ export default function HotelSearchPage() {
 
         const token = getAccessToken();
         try {
-            const res = await sessionFetch("/api/hotels/book", {
+            const res = await bookingRequest("/api/hotels/book", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`,
                 },
-                // The API reads these two ids with `readString` before parsing
-                // them as positive integers, so they must be sent as JSON
-                // strings: a raw number is rejected with
-                // `Field "hotelId" must be a string`.
                 body: JSON.stringify({
                     hotelId: String(hotelId),
                     roomTypeId: String(roomTypeId),
@@ -228,7 +232,7 @@ export default function HotelSearchPage() {
                 // as a fallback for responses that predate that field.
                 toastError("Booking failed", {
                     description:
-                        data?.error || data?.message || "Unknown error",
+                        res.status >= 500 ? "The result is unknown. Retry with the same dates or check My Hotel Bookings before starting a new booking." : data?.error || data?.message || "Unknown error",
                 });
                 setBookingStatus((prev) => ({
                     ...prev,
@@ -256,6 +260,7 @@ export default function HotelSearchPage() {
                 } else {
                     const refreshed = await refresh.json();
                     setHotels(refreshed.hotels || []);
+                    setAvailabilityStay(`${checkIn}/${checkOut}`);
                 }
             } catch (err) {
                 setError("An error occurred while searching for hotels.");
@@ -272,9 +277,10 @@ export default function HotelSearchPage() {
                 ...prev,
                 [`${hotelId}-${roomTypeId}`]: "success",
             }));
+            await acknowledgeBooking("/api/hotels/book", { hotelId: String(hotelId), roomTypeId: String(roomTypeId), checkIn, checkOut });
         } catch (err) {
             toastError("Booking failed", {
-                description: "An error occurred while booking the hotel.",
+                description: "The result is unknown. Retry with the same dates or check My Hotel Bookings.",
             });
             setBookingStatus((prev) => ({
                 ...prev,
@@ -303,6 +309,7 @@ export default function HotelSearchPage() {
                 {hotel.roomTypes.map((roomType) => {
                     const bookingKey = `${hotel.id}-${roomType.id}`;
                     const isBooking = bookingStatus[bookingKey] === "loading";
+                    const available = availabilityStay === `${checkIn}/${checkOut}` ? roomType.availableRooms : null;
                     const isBooked = bookingStatus[bookingKey] === "success";
 
                     return (
@@ -327,16 +334,17 @@ export default function HotelSearchPage() {
                                         <span className="font-medium">
                                             Available:
                                         </span>{" "}
-                                        {roomType.currentAvailability} rooms
+                                        {available == null ? "Select dates for availability" : `${available} rooms available for your stay`}
                                     </p>
                                 </div>
                                 <div className="text-right">
                                     <p className="font-bold text-lg text-gray-900 dark:text-zinc-100">
-                                        ${roomType.pricePerNight}/night
+                                        ${roomType.pricePerNight.toFixed(2)} USD/night
                                     </p>
                                     {nights > 0 && (
                                         <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">
-                                            ${roomType.pricePerNight * nights}{" "}
+                                            {available == null ? "Estimated " : ""}
+                                            ${(available == null ? roomType.pricePerNight * nights : roomType.stayTotal ?? roomType.pricePerNight * nights).toFixed(2)} USD{" "}
                                             total for {nights}{" "}
                                             {nights === 1 ? "night" : "nights"}
                                         </p>
@@ -350,13 +358,13 @@ export default function HotelSearchPage() {
                                                 )
                                             }
                                             disabled={
-                                                roomType.currentAvailability <=
+                                                (available ?? 0) <=
                                                     0 ||
                                                 isBooking ||
                                                 isBooked
                                             }
                                             className={`mt-2 px-4 py-1 rounded text-white transition-colors ${
-                                                roomType.currentAvailability <=
+                                                (available ?? 0) <=
                                                 0
                                                     ? "bg-gray-400 cursor-not-allowed dark:bg-zinc-600 dark:text-zinc-300"
                                                     : isBooked
@@ -366,9 +374,11 @@ export default function HotelSearchPage() {
                                         >
                                             {isBooking
                                                 ? "Booking..."
+                                                : available == null
+                                                ? "Search selected dates"
                                                 : isBooked
                                                 ? "Booked!"
-                                                : roomType.currentAvailability <=
+                                                : (available ?? 0) <=
                                                   0
                                                 ? "Unavailable"
                                                 : "Book Now"}
@@ -467,6 +477,7 @@ export default function HotelSearchPage() {
                                 .then((res) => res.json())
                                 .then((data) => {
                                     setHotels(data.hotels || []);
+                setAvailabilityStay(`${checkIn}/${checkOut}`);
                                     setLoading(false);
                                 })
                                 .catch((err) => {

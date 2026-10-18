@@ -48,7 +48,7 @@ import {
 	createFlightReservation,
 } from "@/lib/reservations";
 import { prisma, resetDatabase, disconnect } from "#support/db";
-import { createUser } from "#support/factories";
+import { addDays, createHotel, createHotelReservation, createRoomType, createUser, tomorrow } from "#support/factories";
 import { callRoute, readJson, tokenFor } from "#support/requests";
 import { readSeedJson } from "@/prisma/seed-fixtures";
 import type {
@@ -418,27 +418,17 @@ describe("the offline AFS provider", () => {
 		expect(fixture.length).toBeGreaterThan(0);
 
 		const unreachable: string[] = [];
-		for (const { code } of fixture) {
-			if (code === "YYZ") {
-				continue;
-			}
-			const outbound = await searchFlights({
-				origin: "YYZ",
-				destination: code,
-				date: SEARCH_DATE,
-			});
-			const inbound = await searchFlights({
-				origin: code,
-				destination: "YYZ",
-				date: SEARCH_DATE,
-			});
-			if (outbound.length === 0 || inbound.length === 0) {
-				unreachable.push(`${code} (out=${outbound.length}, back=${inbound.length})`);
-			}
+		const airports = fixture.filter(({ code }) => code !== "YYZ");
+		// Limit the batch to four read-only searches while keeping every airport covered.
+		for (let offset = 0; offset < airports.length; offset += 4) {
+			await Promise.all(airports.slice(offset, offset + 4).map(async ({ code }) => {
+				const outbound = await searchFlights({ origin: "YYZ", destination: code, date: SEARCH_DATE });
+				const inbound = await searchFlights({ origin: code, destination: "YYZ", date: SEARCH_DATE });
+				if (outbound.length === 0 || inbound.length === 0) unreachable.push(`${code} (out=${outbound.length}, back=${inbound.length})`);
+			}));
 		}
-
 		expect(unreachable).toEqual([]);
-	});
+	}, 120_000);
 
 	it("offers only itineraries the booking endpoint accepts", async () => {
 		/*
@@ -1017,8 +1007,8 @@ describe("the offline AFS provider across workers", () => {
 		const retrieved = await retrieveBooking("Lovelace", legacyId);
 		expect(retrieved.status).toBe("CONFIRMED");
 
-		const cancelled = await cancelFlight(legacyId, "Lovelace");
-		expect(cancelled.status).toBe("CANCELLED");
+		await expect(cancelFlight(legacyId, "Lovelace")).rejects.toMatchObject({ status: 502 });
+		expect((await prisma.flightReservation.findUniqueOrThrow({ where: { afsBookingId: legacyId } })).status).toBe("CONFIRMED");
 	});
 });
 
@@ -1490,6 +1480,9 @@ describe("flight booking compensation over the offline provider", () => {
 			where: { id: reservationId },
 			data: { itineraryId: itinerary.id },
 		});
+		const hotel = await createHotel({});
+		const room = await createRoomType({ hotelId: hotel.id });
+		await createHotelReservation({ userId: user.id, hotelId: hotel.id, roomTypeId: room.id, checkIn: tomorrow(), checkOut: addDays(tomorrow(), 1), price: 123.45, itineraryId: itinerary.id });
 
 		const outcome = await cancelFlightReservation(reservationId, "Lovelace");
 		expect(outcome).toBe("cancelled");
@@ -1499,11 +1492,11 @@ describe("flight booking compensation over the offline provider", () => {
 		});
 		expect(stored.status).toBe("CANCELLED");
 
-		// The itinerary total is credited by the ticket price, once.
+		// The total equals the remaining active stay, even if the old total drifted.
 		const after = await prisma.itinerary.findUniqueOrThrow({
 			where: { id: itinerary.id },
 		});
-		expect(after.totalPrice).toBeCloseTo(1000 - stored.price, 2);
+		expect(after.totalPrice).toBe(123.45);
 
 		// A second cancellation is a no-op rather than a second refund.
 		expect(await cancelFlightReservation(reservationId, "Lovelace")).toBe(

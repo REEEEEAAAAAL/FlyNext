@@ -6,7 +6,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { clearAccessToken } from "@/app/lib/session";
-import { formatLegDate, hotelReference, stayNights } from "@/app/lib/booking-display";
+import { formatStayDate, formatLegDate, hotelReference, stayNights } from "@/app/lib/booking-display";
 import { useFeedback } from "@/app/context/FeedbackContext";
 
 interface HotelBookingDetail {
@@ -312,7 +312,7 @@ export default function HotelBookingDetailsPage() {
                                 Check-In
                             </h3>
                             <p className="text-gray-700 dark:text-zinc-200">
-                                {formatLegDate(booking.checkIn)}
+                                {formatStayDate(booking.checkIn)}
                             </p>
                         </div>
 
@@ -321,7 +321,7 @@ export default function HotelBookingDetailsPage() {
                                 Check-Out
                             </h3>
                             <p className="text-gray-700 dark:text-zinc-200">
-                                {formatLegDate(booking.checkOut)}
+                                {formatStayDate(booking.checkOut)}
                             </p>
                             {(() => {
                                 const nights = stayNights(

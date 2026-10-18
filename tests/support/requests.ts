@@ -58,6 +58,10 @@ export function buildRequest<TParams extends RouteParams>(
       : `${url}?${options.query}`;
 
   const headers = new Headers(options.headers ?? {});
+  // Each call represents a distinct intent unless the test supplies a retry key.
+  if (method !== "GET" && !headers.has("Idempotency-Key")) {
+    headers.set("Idempotency-Key", crypto.randomUUID());
+  }
   if (!headers.has("x-forwarded-for")) {
     headers.set("x-forwarded-for", uniqueClientAddress());
   }

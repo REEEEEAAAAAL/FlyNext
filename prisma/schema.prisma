@@ -127,6 +127,8 @@ model FlightReservation {
   price        Float
   status       BookingStatus @default(CONFIRMED)
   createdAt    DateTime      @default(now())
+  passengerLastName String?
+  cancellationPending Boolean @default(false)
 
   @@index([userId, createdAt])
 }
@@ -142,6 +144,23 @@ model Itinerary {
   cardNumber  String // Last 4 digits only for security
   cardExpiry  String
   bookingDate DateTime           @default(now())
+  paymentMethod String?
+  confirmedAt DateTime?
+  confirmationTotal Float?
+  cancellationRequested Boolean @default(false)
+}
+
+model BookingRequest {
+  id String @id @default(uuid())
+  userId Int
+  key String
+  scope String
+  requestHash String
+  state String @default("PENDING")
+  response Json?
+  statusCode Int?
+  createdAt DateTime @default(now())
+  @@unique([userId, key])
 }
 
 model Notification {

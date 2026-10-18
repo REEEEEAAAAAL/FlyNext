@@ -30,6 +30,7 @@ export const prisma = new PrismaClient();
  * in-process twin is cleared by {@link resetDatabase} for the same reason.
  */
 const TABLES_IN_DELETE_ORDER = [
+  "BookingRequest",
   "RefreshSession",
   "RateLimitCounter",
   "AfsOfflineBooking",

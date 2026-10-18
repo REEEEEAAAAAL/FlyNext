@@ -22,7 +22,9 @@ Add future database-free suites to `unitTestFiles` in `vitest.shared.ts`; all ot
 ## Preferred integration target: enrolled Neon test database
 
 The current integration environment is the existing Neon `flynext_test` database configured in
-ignored `.env.test`. Docker Desktop is optional. The runner always takes `DATABASE_URL` from that
+ignored `.env.test`. Docker image build/run is Deferred while Docker Desktop is unavailable; do not run
+Docker commands, troubleshoot Docker or replace this test environment unless explicitly requested.
+The runner always takes `DATABASE_URL` from that
 file, overriding shell/application values without editing the file. `.env.test.local` never overrides it.
 There is no silent fallback when the selected file or target is unsafe.
 
@@ -134,7 +136,7 @@ No automatic commit/push/merge/deploy. Stage 3 started with B01; see PROGRESS fo
 Public room details contain only room metadata and availability. Owner guest data is served by
 `GET /api/hotels/[hotelId]/room-types/[roomTypeId]/reservations`, requiring the current hotel owner,
 matching room/hotel IDs and `private, no-store`. The owner editor uses this separate endpoint on load and after cancellation.
-The room GET inventory side effect remains B10 for stage 4.
+Stage 4 removes the room GET inventory side effect; its derived calendar is read-only.
 
 `20261017150000_session_security` adds RefreshSession and RateLimitCounter without altering existing business columns.
 Apply it to other environments only after separate target approval. Existing JWT refresh cookies are intentionally
@@ -151,3 +153,31 @@ The current deployment proxy must supply trustworthy forwarding headers; do not 
 Image writes accept bundled defaults or the configured Cloudinary delivery origin, max 12 images/25MB per request
 and 5MB per file. Failed uploads/database writes compensate only new request assets, never retained images.
 Cleanup failure is logged for operator follow-up; real provider upload/deletion has not been exercised in tests.
+
+## Stage-4 booking contracts
+
+Hotel booking, flight booking, itinerary creation and checkout POST require an `Idempotency-Key` header
+(8–128 letters/digits/colon/underscore/hyphen). Generate one key per deliberate intent and keep it for
+every retry, including after a lost response. The key is user-scoped across operations: changing the
+body or operation with the same key returns 409. Successful replays return the original status/body.
+Cancellation endpoints are independently idempotent through durable status transitions.
+
+Checkout JSON is `{ "itineraryId": 123, "paymentMethod": "DEMO" }`; card/expiry/passport fields are
+rejected. Flight forms do not collect passports; legacy passport input is discarded and the provider
+gets a synthetic demo identifier. USD is the demo price convention. Confirmations are immutable;
+current itinerary totals are recomputed from active linked reservations after cancellation.
+
+Hotel input dates are `YYYY-MM-DD`, stored/transported as UTC-midnight calendar dates. Hotel date
+displays use UTC, including the owner calendar. Search requires both dates and returns each room's
+minimum nightly `availableRooms`, `nights`, cent-rounded `pricePerNight`, `stayTotal` and `currency`.
+Without dates, `availableRooms` is null and capacity is not live stock. GET never creates inventory.
+Derived calendar records use date as their identity and may omit a database id.
+
+Apply `20261018090000_booking_consistency` only to a separately approved target. It adds request
+results, passenger snapshots, confirmation snapshots and cancellation intents; it never converts
+historical dates or deletes legacy sensitive fields. Non-UTC historical hotel rows, missing original
+passenger identity, ledger-less cancellations and historical confirmations without a snapshot need
+manual review. Preserve their data. An interrupted built-in flight booking can recover its issued
+ledger ticket using the same key. Unknown remote outcomes/failed compensations retain a recovery
+reference; check bookings and reconcile the provider before any new intent. Do not blindly retry
+an external provider operation or clear its request row to bypass the conflict.

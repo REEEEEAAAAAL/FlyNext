@@ -1,5 +1,6 @@
 "use client";
 
+import { bookingRequest } from "@/app/lib/booking-request";
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
@@ -11,6 +12,7 @@ import {
 	hotelReference,
 	hasLegValue,
 	stayNights,
+	formatStayDate,
 } from "@/app/lib/booking-display";
 import { useFeedback } from "@/app/context/FeedbackContext";
 
@@ -68,7 +70,7 @@ function hotelLabel(booking: HotelBookingListItem): string {
   const duration = nights === null ? "" : ` (${nights} ${nights === 1 ? "night" : "nights"})`;
   return (
     `#${hotelReference(booking.id)} — ${booking.hotel.name}${room}, ` +
-    `${formatDay(booking.period?.checkIn)} → ${formatDay(booking.period?.checkOut)}` +
+    `${formatStayDate(booking.period?.checkIn)} → ${formatStayDate(booking.period?.checkOut)}` +
     `${duration} — $${booking.totalPrice.toFixed(2)}`
   );
 }
@@ -94,7 +96,7 @@ function isSelectable(
   return booking.status !== "CANCELLED" && !booking.itineraryId;
 }
 
-/** Writes are sent once until server idempotency is available (R02). */
+/** Repeated submissions retain their original request key. */
 interface Submission {
   payload: { message?: string; reservations: { id: number }; error?: string } | null;
   failure: string;
@@ -102,13 +104,13 @@ interface Submission {
 }
 async function submitItinerary(token: string, body: Record<string, number | null>): Promise<Submission> {
   try {
-    const response = await sessionFetch("/api/itineraries", {
+    const response = await bookingRequest("/api/itineraries", {
       method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
     });
     const payload = await response.json().catch(() => null);
     if (response.ok && payload) return { payload, failure: "", status: response.status };
-    return { payload: null, status: response.status, failure: payload?.error || "The result is unknown. Check My Itineraries before submitting again." };
+    return { payload: null, status: response.status, failure: response.status >= 500 ? "The result is unknown. Retry with the same selections or check My Itineraries." : payload?.error || "The result is unknown. Check My Itineraries before submitting again." };
   } catch {
     return { payload: null, status: null, failure: "The result is unknown. Check My Itineraries before submitting again." };
   }

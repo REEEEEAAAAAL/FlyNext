@@ -143,7 +143,7 @@ export default function HotelDetailsPage() {
                       <strong>Price:</strong> ${room.pricePerNight}/night
                     </p>
                     <p className="muted text-sm mt-1">
-                      <strong>Available:</strong> {room.currentAvailability} rooms
+                      <strong>Configured capacity:</strong> {room.currentAvailability} rooms. Search with stay dates for availability.
                     </p>
                     {room.amenities && (
                       <p className="muted text-sm mt-1">

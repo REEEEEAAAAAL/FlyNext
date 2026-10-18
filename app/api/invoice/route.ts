@@ -44,7 +44,7 @@ export const GET = withRoute(async (request) => {
 	const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 	const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-	page.drawText("Invoice", {
+	page.drawText("Demo receipt", {
 		x: 250,
 		y: 700,
 		size: 24,
@@ -67,12 +67,12 @@ export const GET = withRoute(async (request) => {
 	drawTextLine(`Invoice #: ${itinerary.id}`);
 	drawTextLine(`Booking Date: ${itinerary.bookingDate.toLocaleString()}`);
 	drawTextLine(`Status: ${itinerary.status}`, 50, true);
-	drawTextLine(`Total Price: $${itinerary.totalPrice.toFixed(2)}`, 50, true);
+	drawTextLine(`Total Price: $${itinerary.totalPrice.toFixed(2)} USD`, 50, true);
 	drawTextLine("", 50);
 
-	drawTextLine("Payment Information:", 50, true);
-	drawTextLine(`Card Ending: ${itinerary.cardNumber.slice(-4) || "****"}`);
-	drawTextLine(`Expiry: ${itinerary.cardExpiry || "**/**"}`);
+	drawTextLine("Simulated confirmation only. No money was charged.", 50, true);
+	drawTextLine(`Method: ${itinerary.paymentMethod ?? "Legacy demo record"}`);
+	drawTextLine("This receipt is not evidence of real payment.");
 	drawTextLine("", 50);
 
 	drawTextLine("Reservation Details:", 50, true);

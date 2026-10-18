@@ -101,7 +101,7 @@ function readChartColors() {
 
 // Define types.
 interface AvailabilityRecord {
-  id: number;
+  id?: number;
   date: string; // e.g., "2023-08-15T00:00:00.000Z"
   availability: number;
   roomTypeId: number;
@@ -594,26 +594,18 @@ export default function EditRoomTypePage() {
 
     // Calendar-like view: Month-by-month view with year navigation.
     const formatMonthYear = (date: Date) =>
-        date.toLocaleString("default", { month: "long", year: "numeric" });
+        date.toLocaleString("default", { month: "long", year: "numeric", timeZone: "UTC" });
 
     // Get the start and end of the current month.
-    const startOfMonth = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth(),
-        1
-    );
-    const endOfMonth = new Date(
-        currentMonth.getFullYear(),
-        currentMonth.getMonth() + 1,
-        0
-    );
+    const startOfMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth(), 1));
+    const endOfMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() + 1, 0));
 
     // Generate days for the current month.
     const monthDays = [];
     for (
         let d = new Date(startOfMonth);
         d <= endOfMonth;
-        d.setDate(d.getDate() + 1)
+        d.setUTCDate(d.getUTCDate() + 1)
     ) {
         monthDays.push(new Date(d));
     }
@@ -700,7 +692,7 @@ export default function EditRoomTypePage() {
                     </div>
                     <div>
                         <label className="label mb-1">
-                            Total Availability:
+                            Total Room Capacity:
                         </label>
                         <input
                             type="number"
@@ -858,7 +850,7 @@ export default function EditRoomTypePage() {
                         <Line
                             data={{
                                 labels: availabilityRecords.map((record) =>
-                                    new Date(record.date).toLocaleDateString()
+                                    new Date(record.date).toLocaleDateString(undefined, { timeZone: "UTC" })
                                 ),
                                 datasets: [
                                     {
@@ -933,11 +925,7 @@ export default function EditRoomTypePage() {
                         className="px-2 py-1 bg-gray-300 rounded dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
                         onClick={() =>
                             setCurrentMonth(
-                                new Date(
-                                    currentMonth.getFullYear() - 1,
-                                    currentMonth.getMonth(),
-                                    1
-                                )
+                                new Date(Date.UTC(currentMonth.getUTCFullYear() - 1, currentMonth.getUTCMonth(), 1))
                             )
                         }
                     >
@@ -947,11 +935,7 @@ export default function EditRoomTypePage() {
                         className="px-2 py-1 bg-gray-300 rounded dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
                         onClick={() =>
                             setCurrentMonth(
-                                new Date(
-                                    currentMonth.getFullYear(),
-                                    currentMonth.getMonth() - 1,
-                                    1
-                                )
+                                new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() - 1, 1))
                             )
                         }
                     >
@@ -961,17 +945,14 @@ export default function EditRoomTypePage() {
                         {currentMonth.toLocaleString("default", {
                             month: "long",
                             year: "numeric",
+                            timeZone: "UTC",
                         })}
                     </div>
                     <button
                         className="px-2 py-1 bg-gray-300 rounded dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
                         onClick={() =>
                             setCurrentMonth(
-                                new Date(
-                                    currentMonth.getFullYear(),
-                                    currentMonth.getMonth() + 1,
-                                    1
-                                )
+                                new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() + 1, 1))
                             )
                         }
                     >
@@ -981,11 +962,7 @@ export default function EditRoomTypePage() {
                         className="px-2 py-1 bg-gray-300 rounded dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
                         onClick={() =>
                             setCurrentMonth(
-                                new Date(
-                                    currentMonth.getFullYear() + 1,
-                                    currentMonth.getMonth(),
-                                    1
-                                )
+                                new Date(Date.UTC(currentMonth.getUTCFullYear() + 1, currentMonth.getUTCMonth(), 1))
                             )
                         }
                     >
@@ -1003,18 +980,10 @@ export default function EditRoomTypePage() {
                     )}
                     {(() => {
                         // Determine first day index and number of days in current month.
-                        const firstDayOfMonth = new Date(
-                            currentMonth.getFullYear(),
-                            currentMonth.getMonth(),
-                            1
-                        );
-                        const startIndex = firstDayOfMonth.getDay();
-                        const endOfMonth = new Date(
-                            currentMonth.getFullYear(),
-                            currentMonth.getMonth() + 1,
-                            0
-                        );
-                        const daysInMonth = endOfMonth.getDate();
+                        const firstDayOfMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth(), 1));
+                        const startIndex = firstDayOfMonth.getUTCDay();
+                        const endOfMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() + 1, 0));
+                        const daysInMonth = endOfMonth.getUTCDate();
 
                         const cells = [];
 
@@ -1024,11 +993,7 @@ export default function EditRoomTypePage() {
                         }
                         // Add day cells.
                         for (let day = 1; day <= daysInMonth; day++) {
-                            const d = new Date(
-                                currentMonth.getFullYear(),
-                                currentMonth.getMonth(),
-                                day
-                            );
+                            const d = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth(), day));
                             const formatted = formatDate(d);
                             const record = availabilityRecords.find(
                                 (r) =>
@@ -1099,13 +1064,13 @@ export default function EditRoomTypePage() {
                                     <strong>Check-In:</strong>{" "}
                                     {new Date(
                                         resv.checkIn
-                                    ).toLocaleDateString()}
+                                    ).toLocaleDateString(undefined, { timeZone: "UTC" })}
                                 </p>
                                 <p>
                                     <strong>Check-Out:</strong>{" "}
                                     {new Date(
                                         resv.checkOut
-                                    ).toLocaleDateString()}
+                                    ).toLocaleDateString(undefined, { timeZone: "UTC" })}
                                 </p>
                                 <p>
                                     <strong>Price:</strong> ${resv.price}

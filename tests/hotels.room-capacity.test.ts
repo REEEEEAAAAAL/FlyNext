@@ -101,7 +101,7 @@ describe("owner capacity edits reach the calendar", () => {
 		expect(stored?.currentAvailability).toBe(2);
 	});
 
-	it("leaves a night a booking has already taken at its reduced count", async () => {
+	it("reduces remaining inventory while preserving existing reservations", async () => {
 		const owner = await createUser({ IsHotelOwner: true });
 		const guest = await createUser();
 		const hotel = await createHotel({ ownerId: owner.id });
@@ -126,11 +126,8 @@ describe("owner capacity edits reach the calendar", () => {
 		// The booked night is one room down.
 		expect(await availabilityOn(roomType.id, [bookedNight])).toEqual([2]);
 
-		/*
-		 * The owner lowers capacity to 1. The booked night is below the old
-		 * capacity, so it is not a candidate: it must keep the room that was sold,
-		 * not be reset to a full house.
-		 */
+		// Lowering capacity to one leaves the existing guest and no unsold rooms.
+
 		const response = await callRoute<{ hotelId: string; roomTypeId: string }>(
 			updateRoomType,
 			{
@@ -141,7 +138,7 @@ describe("owner capacity edits reach the calendar", () => {
 			}
 		);
 		expect(response.status).toBe(200);
-		expect(await availabilityOn(roomType.id, [bookedNight])).toEqual([2]);
+		expect(await availabilityOn(roomType.id, [bookedNight])).toEqual([0]);
 
 		// The reservation still stands and still owns that room.
 		const reservations = await prisma.hotelReservation.count({

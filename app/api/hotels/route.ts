@@ -28,6 +28,9 @@ import {
 } from "@/lib/api/validation";
 import { DEFAULT_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
 import type { HotelWithRoomTypes } from "@/types";
+import { eachNight, isWithinAvailabilityHorizon, parseStayRange } from "@/lib/api/validation";
+import { nightlyAvailability } from "@/lib/hotel-inventory";
+import { money } from "@/lib/booking-locks";
 
 /** Star ratings are constrained to the 1–5 scale the UI renders as ★/☆. */
 const MIN_STARS = 1;
@@ -48,6 +51,12 @@ function readFilter(searchParams: URLSearchParams, field: string): string {
 export const GET = withRoute(async (request) => {
 	await enforceRateLimit(request, "publicRead");
 	const { searchParams } = new URL(request.url);
+	const checkIn = searchParams.get("checkIn");
+	const checkOut = searchParams.get("checkOut");
+	if (Boolean(checkIn) !== Boolean(checkOut)) throw badRequest("Both checkIn and checkOut are required");
+	const stay = checkIn && checkOut ? parseStayRange(checkIn, checkOut) : null;
+	const dates = stay ? eachNight(stay.checkIn, stay.checkOut) : [];
+	if (dates.some(date => !isWithinAvailabilityHorizon(date))) throw badRequest("The selected date is not supported for booking.");
 
 	const city = readFilter(searchParams, "city");
 	const name = readFilter(searchParams, "name");
@@ -91,7 +100,16 @@ export const GET = withRoute(async (request) => {
 
 	// The client reads `data.hotels` with a `|| []` fallback, but the payload is
 	// always well formed.
-	const payload: { hotels: HotelWithRoomTypes[] } = { hotels };
+	const results = await Promise.all(hotels.map(async hotel => ({
+		...hotel,
+		roomTypes: (await Promise.all(hotel.roomTypes.map(async room => {
+			const pricePerNight = money(room.pricePerNight);
+			if (!stay) return { ...room, pricePerNight, availableRooms: null, nights: null, stayTotal: null, currency: "USD" as const };
+			const rows = await nightlyAvailability(prisma, room, dates);
+			return { ...room, pricePerNight, availableRooms: Math.min(...rows.map(row => row.availability)), nights: stay.nights, stayTotal: money(pricePerNight * stay.nights), currency: "USD" as const };
+		}))).filter(room => (room.availableRooms === null || room.availableRooms > 0) && (priceMin === undefined || room.pricePerNight >= priceMin) && (priceMax === undefined || room.pricePerNight <= priceMax)),
+	})));
+	const payload: { hotels: HotelWithRoomTypes[] } = { hotels: results.filter(hotel => !stay || hotel.roomTypes.length > 0) };
 	return jsonOk(payload);
 });
 

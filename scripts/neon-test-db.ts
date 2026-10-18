@@ -41,7 +41,7 @@ async function main() {
 		if (rows.length !== 1 || actual.name !== "flynext_test" || actual.role !== decodeURIComponent(url.username) || !actual.owner || actual.marker !== null) {
 			throw new Error("Enrollment refused: unexpected database name, role, ownership or existing marker.");
 		}
-		const allowed = new Set(["RefreshSession", "RateLimitCounter", "AfsOfflineBooking", "Airport", "City", "FlightReservation", "Hotel", "HotelReservation", "Itinerary", "Notification", "RoomAvailabilityRecord", "RoomType", "User", "_prisma_migrations"]);
+		const allowed = new Set(["BookingRequest", "RefreshSession", "RateLimitCounter", "AfsOfflineBooking", "Airport", "City", "FlightReservation", "Hotel", "HotelReservation", "Itinerary", "Notification", "RoomAvailabilityRecord", "RoomType", "User", "_prisma_migrations"]);
 		const tables = await client.$queryRawUnsafe<Array<{ schemaname: string; tablename: string }>>("SELECT schemaname, tablename FROM pg_tables WHERE schemaname NOT IN ('pg_catalog', 'information_schema')");
 		if (tables.some(row => row.schemaname !== "public" || !allowed.has(row.tablename))) throw new Error("Enrollment refused: unexpected non-project tables; inspect target manually.");
 		approval.databaseOid = actual.oid;

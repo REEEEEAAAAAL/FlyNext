@@ -59,7 +59,7 @@ export default function RoomTypeDetailsPage() {
             <strong>Price Per Night:</strong> ${roomType.pricePerNight}
           </p>
           <p className="text-gray-700 dark:text-zinc-200 mb-2">
-            <strong>Current Availability:</strong> {roomType.currentAvailability}
+            <strong>Configured capacity:</strong> {roomType.currentAvailability}. Search with stay dates for availability.
           </p>
           {roomType.images && roomType.images.length > 0 ? (
             <div className="mt-6">

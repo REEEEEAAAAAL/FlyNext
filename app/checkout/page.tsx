@@ -1,5 +1,6 @@
 "use client";
 
+import { bookingRequest } from "@/app/lib/booking-request";
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 export const dynamic = 'force-dynamic';
 
@@ -24,8 +25,6 @@ function CheckoutPageContent() {
   const { success, error: toastError, info } = useFeedback();
 
   const [order, setOrder] = useState<OrderSummary | null>(null);
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -95,6 +94,7 @@ function CheckoutPageContent() {
         } else {
           const data = await res.json();
           setOrder(data);
+          if (data.status === "CONFIRMED") setInvoiceUrl(`/api/invoice?itineraryId=${itineraryId}`);
         }
       } catch (err) {
         const failure = "An error occurred while fetching itinerary details.";
@@ -118,7 +118,7 @@ function CheckoutPageContent() {
     }
     setError("");
     setSubmitting(true);
-    const pending = info("Processing your payment…", { duration: 0 });
+    const pending = info("Confirming your demo booking...", { duration: 0 });
 
     try {
       const token = getAccessToken();
@@ -127,18 +127,15 @@ function CheckoutPageContent() {
         return;
       }
 
-      const res = await sessionFetch("/api/checkout", {
+      const res = await bookingRequest("/api/checkout", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        // `/api/checkout` reads `itineraryId` with `readString` before parsing it
-        // as a positive integer, so it must be sent as a JSON string.
         body: JSON.stringify({
           itineraryId: String(itineraryId),
-          cardNumber,
-          cardExpiry,
+          paymentMethod: "DEMO",
         }),
       });
 
@@ -150,11 +147,11 @@ function CheckoutPageContent() {
           router.push("/auth/refresh");
           return;
         }
-        const failure = data.error || "Payment failed.";
+        const failure = res.status >= 500 ? "The result is unknown. Retry with the same details or check My Itineraries." : data.error || "Demo confirmation failed.";
         setError(failure);
         toastError("Payment failed", { description: failure });
       } else {
-        success("Payment confirmed", {
+        success("Demo booking confirmed", {
           description:
             data.message ||
             "Your booking is confirmed. An invoice is ready to download.",
@@ -174,7 +171,7 @@ function CheckoutPageContent() {
         setInvoiceUrl(`/api/invoice?itineraryId=${itineraryId}`);
       }
     } catch (err) {
-      const failure = "An error occurred while processing payment.";
+      const failure = "The result is unknown. Retry with the same details or check My Itineraries.";
       setError(failure);
       toastError("Payment failed", { description: failure });
     } finally {
@@ -259,7 +256,7 @@ function CheckoutPageContent() {
             Order Summary (Itinerary #{order.id})
           </h2>
           <p className="text-gray-700 dark:text-zinc-200 mb-2">
-            <strong>Total Price:</strong> ${order.totalPrice.toFixed(2)}
+            <strong>Total Price:</strong> ${order.totalPrice.toFixed(2)} USD
           </p>
           <p className="text-gray-700 dark:text-zinc-200 mb-2">
             <strong>Booking Date:</strong>{" "}
@@ -275,40 +272,13 @@ function CheckoutPageContent() {
       )}
 
       <form onSubmit={handlePaymentSubmit}>
-        <div className="mb-4">
-          <label htmlFor="cardNumber" className="label mb-1">
-            Card Number:
-          </label>
-          <input
-            type="text"
-            id="cardNumber"
-            value={cardNumber}
-            onChange={(e) => setCardNumber(e.target.value)}
-            required
-            placeholder="Enter card number"
-            className="field"
-          />
-        </div>
-        <div className="mb-6">
-          <label htmlFor="cardExpiry" className="label mb-1">
-            Card Expiry:
-          </label>
-          <input
-            type="text"
-            id="cardExpiry"
-            value={cardExpiry}
-            onChange={(e) => setCardExpiry(e.target.value)}
-            required
-            placeholder="MM/YY"
-            className="field"
-          />
-        </div>
+        <p className="mb-6 muted">Demo checkout uses a simulated payment method. No money is charged. Do not provide card or passport details.</p>
         <button
           type="submit"
-          disabled={submitting}
+          disabled={submitting || !order || order.status !== "DRAFT"}
           className="w-full py-3 bg-black text-white rounded hover:bg-gray-800 transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
         >
-          {submitting ? "Processing Payment..." : "Submit Payment"}
+          {submitting ? "Confirming..." : "Confirm Demo Booking"}
         </button>
       </form>
 

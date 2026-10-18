@@ -240,7 +240,7 @@ export default function CreateRoomTypePage() {
                 {/* Current Availability */}
                 <div>
                     <label className="label mb-1">
-                        Total Availability:
+                        Total Room Capacity:
                     </label>
                     <input
                         type="number"

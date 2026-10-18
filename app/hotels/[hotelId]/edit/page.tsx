@@ -579,7 +579,7 @@ export default function EditHotelPage() {
                   <p>Name: {roomType.name}</p>
                   <p>Amenities: {roomType.amenities}</p>
                   <p>Price Per Night: ${roomType.pricePerNight}</p>
-                  <p>Availability: {roomType.currentAvailability}</p>
+                  <p>Configured capacity: {roomType.currentAvailability}</p>
                 </div>
               </Link>
             ))}

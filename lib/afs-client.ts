@@ -263,11 +263,12 @@ export async function searchFlights(
 
 /** Create a flight booking. */
 export async function createBooking(
-	bookingData: AfsCreateBookingRequest
+	bookingData: AfsCreateBookingRequest,
+	operationId?: string
 ): Promise<AfsBooking> {
 	const client = remoteClient();
 	if (client === undefined) {
-		return offline.createBooking(bookingData);
+		return offline.createBooking(bookingData, operationId);
 	}
 	const action = "Booking failed";
 	try {
@@ -284,6 +285,7 @@ export async function createBooking(
 		}
 		return {
 			bookingReference: record.bookingReference,
+			...(typeof record.id === "string" ? { id: record.id } : {}),
 			status: typeof record.status === "string" ? record.status : "CONFIRMED",
 			flights: record.flights as AfsFlight[],
 			...(typeof record.ticketNumber === "string"

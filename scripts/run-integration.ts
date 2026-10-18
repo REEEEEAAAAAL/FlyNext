@@ -6,7 +6,7 @@ if (process.env.NODE_ENV === "production" || process.env.VERCEL || process.env.V
 	console.error("Integration tests refused in a production/deployment environment.");
 	process.exitCode = 1;
 } else {
-	const result = spawnSync(process.execPath, [resolve("node_modules/vitest/vitest.mjs"), "run", "--config", "vitest.integration.config.ts"], {
+	const result = spawnSync(process.execPath, [resolve("node_modules/vitest/vitest.mjs"), "run", "--config", "vitest.integration.config.ts", ...process.argv.slice(2)], {
 		stdio: "inherit", windowsHide: true, env: process.env,
 	});
 	if (result.error) console.error("Could not start the integration runner (details withheld).");

@@ -1,5 +1,6 @@
 "use client";
 
+import { acknowledgeBooking, bookingRequest } from "@/app/lib/booking-request";
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import { useRef, useState } from "react";
@@ -223,15 +224,7 @@ export default function FlightSearchPage() {
     // Return search field (for round-trip).
     const [returnDate, setReturnDate] = useState("");
 
-    /*
-     * The passport number the ticket is issued against.
-     *
-     * Collected from the traveller on the booking form: a single hard-coded value
-     * here would issue every ticket in the system to the same invented passenger.
-     * It reaches the provider at all only because that check counts characters
-     * rather than digits, so the field has to be a real one.
-     */
-    const [passportNumber, setPassportNumber] = useState("");
+
 
     // Flight results for outbound and return.
     const [outboundFlightGroups, setOutboundFlightGroups] = useState<FlightGroup[]>([]);
@@ -582,20 +575,6 @@ export default function FlightSearchPage() {
             if (!(await ensureLoggedIn()) || flights.length === 0) return;
 
             /*
-             * The provider refuses a booking without a passport and checks only its
-             * length, so an empty field is caught here with a message that says which
-             * input to fill in, rather than as a 400 naming the JSON field.
-             */
-            const passport = passportNumber.trim();
-            if (passport.length < 9) {
-                const failure =
-                    "Enter a passport number of at least 9 characters before booking.";
-                setBookingError(failure);
-                warning("Passport number needed", { description: failure });
-                return;
-            }
-
-            /*
              * Last line of defence before the request. The provider refuses an
              * itinerary like this with a message that does not say which leg is the
              * problem; here the page can.
@@ -614,7 +593,7 @@ export default function FlightSearchPage() {
                 return;
             }
 
-            const res = await sessionFetch("/api/flights/book", {
+            const res = await bookingRequest("/api/flights/book", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
@@ -624,7 +603,6 @@ export default function FlightSearchPage() {
                     email: user.email,
                     firstName: user.firstName,
                     lastName: user.lastName,
-                    passportNumber: passport,
                     flightIds: flights.map((f) => f.id),
                     returnLegCount,
                 }),
@@ -633,7 +611,7 @@ export default function FlightSearchPage() {
             const data = await res.json().catch(() => ({}));
 
             if (!res.ok) {
-                const failure = data.error || "Unknown error";
+                const failure = res.status >= 500 ? "The result is unknown. Retry with the same selection or check My Flight Bookings before starting a new booking." : data.error || "Unknown error";
                 setBookingError("Booking failed: " + failure);
                 toastError("Booking failed", { description: failure });
                 return;
@@ -644,8 +622,9 @@ export default function FlightSearchPage() {
             success("Flight booked", {
                 description: `${message} Add it to an itinerary from the itineraries page.`,
             });
+            await acknowledgeBooking("/api/flights/book", { email: user.email, firstName: user.firstName, lastName: user.lastName, flightIds: flights.map(f => f.id), returnLegCount });
         } catch (error: any) {
-            const failure = "An error occurred while booking the flight.";
+            const failure = "The result is unknown. Retry with the same selection or check My Flight Bookings.";
             setBookingError(failure + " " + error.message);
             toastError("Booking failed", {
                 description: error?.message
@@ -825,22 +804,7 @@ export default function FlightSearchPage() {
                         />
                     </div>
                 )}
-                <div>
-                    <label className="label">Passport Number:</label>
-                    <input
-                        type="text"
-                        value={passportNumber}
-                        onChange={(e) => setPassportNumber(e.target.value)}
-                        placeholder="e.g., AB1234567"
-                        minLength={9}
-                        maxLength={20}
-                        required
-                        className="field"
-                    />
-                    <p className="muted text-sm mt-1">
-                        Required by the airline to issue the ticket.
-                    </p>
-                </div>
+                <p className="muted text-sm">Demo flights use a synthetic passenger identifier. No passport details are needed.</p>
                 <button type="submit" className="px-6 py-3 bg-black text-white rounded hover:bg-gray-800 transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white">
                     Search Flights
                 </button>
