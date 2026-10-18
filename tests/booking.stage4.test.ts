@@ -7,6 +7,7 @@ import { prisma as applicationDb, DEFAULT_TRANSACTION_OPTIONS } from "@/lib/pris
 import { disconnect, prisma, resetDatabase } from "#support/db";
 import { addDays, createHotel, createRoomType, createUser, tomorrow, toDateParam } from "#support/factories";
 import { callRoute, readJson, tokenFor } from "#support/requests";
+import { repairDate } from "@/lib/hotel-date-repair";
 
 beforeEach(resetDatabase);
 afterAll(disconnect);
@@ -21,6 +22,31 @@ async function fixture() {
 }
 
 describe("stage 4 hotel regressions", () => {
+	it("unrelated expired legacy rows do not block current read-only search or calendar", async () => {
+		const f = await fixture();
+		const ancient = new Date("2020-01-01T16:00:00Z");
+		await prisma.roomAvailabilityRecord.create({data:{roomTypeId:f.room.id,date:ancient,availability:1}});
+		await prisma.hotelReservation.create({data:{userId:f.user.id,hotelId:f.hotel.id,roomTypeId:f.room.id,checkIn:ancient,checkOut:new Date("2020-01-02T16:00:00Z"),price:1}});
+		const before = await prisma.roomAvailabilityRecord.count();
+		expect((await callRoute(search,{query:`checkIn=${f.body.checkIn}&checkOut=${f.body.checkOut}`})).status).toBe(200);
+		expect((await callRoute(calendar,{params:{hotelId:String(f.hotel.id),roomTypeId:String(f.room.id)}})).status).toBe(200);
+		expect(await prisma.roomAvailabilityRecord.count()).toBe(before);
+	},60_000);
+	it("repaired legacy nights support reads, last-room booking and exactly-once cancellation", async () => {
+		const f=await fixture();
+		const legacy=new Date(f.start.getTime()-8*3600000);
+		await prisma.roomAvailabilityRecord.deleteMany({where:{roomTypeId:f.room.id}});
+		const row=await prisma.roomAvailabilityRecord.create({data:{roomTypeId:f.room.id,date:legacy,availability:1}});
+		expect((await callRoute(search,{query:`checkIn=${f.body.checkIn}&checkOut=${f.body.checkOut}`})).status).toBe(409);
+		await prisma.roomAvailabilityRecord.update({where:{id:row.id},data:{date:new Date(repairDate(legacy.toISOString(),"Asia/Shanghai"))}});
+		expect((await callRoute(search,{query:`checkIn=${f.body.checkIn}&checkOut=${f.body.checkOut}`})).status).toBe(200);
+		const response=await callRoute(book,{method:"POST",token:f.token,json:f.body});
+		expect(response.status).toBe(201);
+		const {reservation}=await readJson<{reservation:{id:number}}>(response);
+		expect((await callRoute(book,{method:"POST",token:f.token,json:f.body})).status).toBe(409);
+		await cancelHotelReservation(reservation.id);await cancelHotelReservation(reservation.id);
+		expect((await prisma.roomAvailabilityRecord.findMany({where:{roomTypeId:f.room.id}})).every(r=>r.availability===1)).toBe(true);
+	},60_000);
 	it.each(["UTC", "Asia/Shanghai", "America/Toronto"])("releases exactly the stored nights with PostgreSQL session timezone %s", async zone => {
 		const f = await fixture();
 		const booked = await callRoute(book, { method: "POST", token: f.token, json: f.body });

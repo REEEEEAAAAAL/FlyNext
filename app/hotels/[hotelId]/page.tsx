@@ -1,12 +1,12 @@
 "use client";
 
+import HotelStayPicker from "@/app/components/HotelStayPicker";
 import ImageGallery from "@/app/components/ImageGallery";
 
 import { sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { useParams } from "next/navigation";
 
 /*
@@ -98,49 +98,13 @@ export default function HotelDetailsPage() {
               </p>
             </div>
           </div>
-          <Link className="button-primary mt-6" href="/hotels">Check dates & availability</Link>
+          <a className="button-primary mt-6" href="#stay-dates">Choose stay dates</a>
           {/* Gallery Section */}
           <div className="mt-8">
             <h2 className="text-2xl font-semibold heading mb-4">Gallery</h2>
             <ImageGallery images={hotel.images ?? []} name={hotel.name} />
           </div>
-          {/* Room Types Section */}
-          {hotel.roomTypes && hotel.roomTypes.length > 0 && (
-            <div className="mt-8">
-              <h2 className="text-2xl font-semibold heading mb-4">
-                Choose your room
-              </h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {hotel.roomTypes.map((room) => (
-                  /*
-                   * These room cards are nested inside the page `card`, so they
-                   * use the nested-surface primitive (zinc-800 on dark) with the
-                   * shared row hover instead of a second full card surface.
-                   */
-                  <Link
-                    key={room.id}
-                    href={`/hotels/${hotel.id}/room-types/${room.id}`}
-                    className="block p-4 surface row-hover hover:shadow-xl transition duration-300"
-                  >
-                    <h3 className="text-xl font-bold heading">
-                      {room.name}
-                    </h3>
-                    <p className="muted text-sm mt-1">
-                      <strong>Price:</strong> ${room.pricePerNight}/night
-                    </p>
-                    <p className="muted text-sm mt-1">
-                      <strong>Configured capacity:</strong> {room.currentAvailability} {room.currentAvailability === 1 ? "room" : "rooms"}. Search with stay dates for availability.
-                    </p>
-                    {room.amenities && (
-                      <p className="muted text-sm mt-1">
-                        <strong>Amenities:</strong> {room.amenities}
-                      </p>
-                    )}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
+          <HotelStayPicker hotelId={String(hotelId)} rooms={hotel.roomTypes ?? []} />
         </>
       ) : (
         !loading && <p className="muted">No hotel details found.</p>

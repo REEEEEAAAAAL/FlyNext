@@ -200,8 +200,8 @@ export default function NotificationBadge() {
                      * changes with the theme is the shade of red — a darker,
                      * less glaring one in dark mode.
                      */
-                    <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white opacity-100 bg-red-600 rounded-full dark:bg-red-500 dark:text-white">
-                        {count}
+                    <span className="absolute -top-1.5 -right-1.5 inline-flex h-4 min-w-4 items-center justify-center px-0.5 text-[10px] font-semibold leading-none text-white opacity-100 bg-red-600 rounded-full dark:bg-red-500 dark:text-white">
+                        {count > 99 ? "99+" : count}
                     </span>
                 )}
             </div>

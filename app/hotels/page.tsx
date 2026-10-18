@@ -427,7 +427,7 @@ export default function HotelSearchPage() {
                                             </p>
                                         </div>
                                         <Link
-                                            href={`/hotels/${hotel.id}`}
+                                            href={`/hotels/${hotel.id}${checkIn && checkOut ? `?${new URLSearchParams({checkIn,checkOut})}` : ""}`}
                                             className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors text-sm dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
                                         >
                                             View Details

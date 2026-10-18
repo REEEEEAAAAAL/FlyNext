@@ -7,7 +7,7 @@ import ThemeToggle from "./ThemeToggle";
 import NotificationBadge from "./NotificationBadge";
 
 const primary = [["/flights", "Flights"], ["/hotels", "Stays"], ["/itineraries", "My trips"]];
-const account = [["/itineraries/new", "Build an itinerary"], ["/user/flight-bookings", "Flight bookings"], ["/user/hotel-bookings", "Hotel bookings"], ["/profile", "Profile"], ["/notifications", "Notifications"], ["/hotels/owner", "Host workspace"]];
+const account = [["/itineraries/new", "Build an itinerary"], ["/user/flight-bookings", "Flight bookings"], ["/user/hotel-bookings", "Hotel bookings"], ["/profile", "Profile"], ["/hotels/owner", "Host workspace"]];
 export default function NavigationBar() {
   const pathname = usePathname();
   const [signedIn, setSignedIn] = useState(false);

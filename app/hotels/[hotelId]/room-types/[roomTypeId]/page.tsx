@@ -1,7 +1,7 @@
 "use client";
 
+import HotelStayPicker from "@/app/components/HotelStayPicker";
 import ImageGallery from "@/app/components/ImageGallery";
-import Link from "next/link";
 
 import { sessionFetch } from "@/app/lib/session";
 
@@ -65,7 +65,7 @@ export default function RoomTypeDetailsPage() {
             <strong>Configured capacity:</strong> {roomType.currentAvailability}. Search with stay dates for availability.
           </p>
           <div className="mt-6"><ImageGallery images={roomType.images ?? []} name={roomType.name} /></div>
-          <div className="mt-6 flex flex-wrap gap-3"><Link className="button-primary" href="/hotels">Select dates & reserve</Link><Link className="button-secondary" href={`/hotels/${hotelId}`}>Back to hotel</Link></div>
+          <HotelStayPicker hotelId={hotelId} rooms={[roomType]} roomDetail />
         </div>
       )}
       {!loading && !error && !roomType && (
