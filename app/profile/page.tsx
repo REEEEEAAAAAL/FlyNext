@@ -1,5 +1,7 @@
 "use client";
 
+import { loginUrl } from "@/app/lib/return-path";
+
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
@@ -100,7 +102,7 @@ export default function ProfilePage() {
                 const token = getAccessToken();
                 if (!token) {
                     // Redirect to login if no token found.
-                    router.push("/auth/login");
+                    router.push(loginUrl());
                     return;
                 }
 
@@ -186,7 +188,7 @@ export default function ProfilePage() {
         try {
             const token = getAccessToken();
             if (!token) {
-                router.push("/auth/login");
+                router.push(loginUrl());
                 return;
             }
 

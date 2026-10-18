@@ -1,5 +1,7 @@
 "use client";
 
+import { loginUrl } from "@/app/lib/return-path";
+
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
@@ -38,7 +40,7 @@ export default function HotelBookingDetailsPage() {
     const params = useParams();
     const { confirm, success, error: toastError, info } = useFeedback();
     const [booking, setBooking] = useState<HotelBookingDetail | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [actionLoading, setActionLoading] = useState(false);
 
@@ -53,7 +55,7 @@ export default function HotelBookingDetailsPage() {
     const refreshToken = async () => {
         const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
         const response = await sessionFetch("/api/user", {
@@ -75,7 +77,7 @@ export default function HotelBookingDetailsPage() {
     useEffect(() => {
         const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
         refreshToken();
@@ -157,7 +159,7 @@ export default function HotelBookingDetailsPage() {
     const handleCancelBooking = async () => {
         const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
 
@@ -177,7 +179,7 @@ export default function HotelBookingDetailsPage() {
             points: [
                 "The room is released and those nights can be sold to somebody else.",
                 "Any itinerary total that includes this stay is reduced by its price.",
-                "Re-booking later means paying whatever the rate is then.",
+                "A new reservation uses the rate available at that time. No money is charged in this demo.",
             ],
             confirmLabel: "Yes, cancel booking",
             cancelLabel: "Keep my booking",

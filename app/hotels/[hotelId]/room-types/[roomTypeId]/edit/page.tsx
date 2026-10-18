@@ -1,8 +1,12 @@
 "use client";
 
+import HostNavigation from "@/app/components/HostNavigation";
+
+import { loginUrl } from "@/app/lib/return-path";
+
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
-import { useState, useEffect, FormEvent } from "react";
+import { useState, useEffect, useRef, FormEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -153,7 +157,7 @@ export default function EditRoomTypePage() {
         const fetchData = async () => {
             const token = getAccessToken();
             if (!token) {
-                router.push("/auth/login");
+                router.push(loginUrl());
                 return;
             }
             const response = await sessionFetch("/api/user", {
@@ -185,8 +189,10 @@ export default function EditRoomTypePage() {
     const [selectedImages, setSelectedImages] = useState<
         { file: File | null; previewUrl: string }[]
     >([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [submitting, setSubmitting] = useState(false);
+    const [cancellingReservation, setCancellingReservation] = useState<number | null>(null);
+    const cancellationInFlight = useRef(false);
     const [error, setError] = useState("");
 
     // Availability records state.
@@ -328,7 +334,7 @@ export default function EditRoomTypePage() {
         try {
             const token = getAccessToken();
             if (!token) {
-                router.push("/auth/login");
+                router.push(loginUrl());
                 return;
             }
             const response = await sessionFetch("/api/user", {
@@ -448,6 +454,8 @@ export default function EditRoomTypePage() {
      * guest is notified and the nights go back on sale for everyone.
      */
     const handleCancelReservation = async (reservationId: number | null) => {
+        if (reservationId === null || cancellationInFlight.current) return;
+        cancellationInFlight.current = true;
         const confirmed = await confirm({
             title: "Cancel this reservation?",
             description:
@@ -460,7 +468,8 @@ export default function EditRoomTypePage() {
             confirmLabel: "Yes, cancel reservation",
             cancelLabel: "Keep reservation",
         });
-        if (!confirmed) return;
+        if (!confirmed) { cancellationInFlight.current = false; return; }
+        setCancellingReservation(reservationId);
 
         const pending = info("Cancelling the reservation…", { duration: 0 });
         try {
@@ -534,6 +543,8 @@ export default function EditRoomTypePage() {
             });
         } finally {
             pending.dismiss();
+            cancellationInFlight.current = false;
+            setCancellingReservation(null);
         }
     };
 
@@ -594,7 +605,7 @@ export default function EditRoomTypePage() {
 
     // Calendar-like view: Month-by-month view with year navigation.
     const formatMonthYear = (date: Date) =>
-        date.toLocaleString("default", { month: "long", year: "numeric", timeZone: "UTC" });
+        date.toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
 
     // Get the start and end of the current month.
     const startOfMonth = new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth(), 1));
@@ -612,29 +623,9 @@ export default function EditRoomTypePage() {
 
     return (
         <div className="max-w-3xl mx-auto p-8 card text-black dark:text-zinc-100 relative">
-            {/* Delete Room Type Button */}
-            <button
-                type="button"
-                onClick={handleDeleteRoomType}
-                className="absolute top-4 right-4 bg-red-600 text-white rounded-full p-1 hover:bg-red-700 dark:hover:bg-red-500"
-                title="Delete Room Type"
-            >
-                <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-6 w-6"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                >
-                    <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-4h4a1 1 0 011 1v2H9V4a1 1 0 011-1z"
-                    />
-                </svg>
-            </button>
 
+
+            <HostNavigation hotelHref={`/hotels/${hotelId}/edit`} />
             <h1 className="text-3xl font-bold mb-6 heading">
                 Edit Room Type
             </h1>
@@ -646,10 +637,10 @@ export default function EditRoomTypePage() {
                 <form onSubmit={handleSubmit} className="space-y-6">
                     {/* Room Type Details Form */}
                     <div>
-                        <label className="label mb-1">
+                        <label htmlFor="field-1" className="label mb-1">
                             Room Type Name:
                         </label>
-                        <input
+                        <input id="field-1"
                             type="text"
                             name="name"
                             value={formData.name}
@@ -660,10 +651,10 @@ export default function EditRoomTypePage() {
                         />
                     </div>
                     <div>
-                        <label className="label mb-1">
+                        <label htmlFor="field-2" className="label mb-1">
                             Amenities:
                         </label>
-                        <input
+                        <input id="field-2"
                             type="text"
                             name="amenities"
                             value={formData.amenities || ""}
@@ -673,10 +664,10 @@ export default function EditRoomTypePage() {
                         />
                     </div>
                     <div>
-                        <label className="label mb-1">
+                        <label htmlFor="field-3" className="label mb-1">
                             Price Per Night ($):
                         </label>
-                        <input
+                        <input id="field-3"
                             type="number"
                             name="pricePerNight"
                             value={formData.pricePerNight}
@@ -691,10 +682,10 @@ export default function EditRoomTypePage() {
                         />
                     </div>
                     <div>
-                        <label className="label mb-1">
+                        <label htmlFor="field-4" className="label mb-1">
                             Total Room Capacity:
                         </label>
-                        <input
+                        <input id="field-4"
                             type="number"
                             name="currentAvailability"
                             value={formData.currentAvailability}
@@ -802,7 +793,7 @@ export default function EditRoomTypePage() {
 
             {/* Availability Records Section */}
             <div className="mt-8">
-                <div className="flex justify-between items-center mb-4">
+                <div className="calendar-controls flex justify-between items-center mb-4">
                     <h2 className="text-2xl font-bold heading">
                         Availability Records
                     </h2>
@@ -811,10 +802,10 @@ export default function EditRoomTypePage() {
                         className="flex flex-wrap items-center gap-4"
                     >
                         <div>
-                            <label className="label mb-1">
+                            <label htmlFor="field-5" className="label mb-1">
                                 Check-In:
                             </label>
-                            <input
+                            <input id="field-5"
                                 type="date"
                                 value={checkIn}
                                 onChange={(e) => setCheckIn(e.target.value)}
@@ -822,10 +813,10 @@ export default function EditRoomTypePage() {
                             />
                         </div>
                         <div>
-                            <label className="label mb-1">
+                            <label htmlFor="field-6" className="label mb-1">
                                 Check-Out:
                             </label>
-                            <input
+                            <input id="field-6"
                                 type="date"
                                 value={checkOut}
                                 onChange={(e) => setCheckOut(e.target.value)}
@@ -850,7 +841,7 @@ export default function EditRoomTypePage() {
                         <Line
                             data={{
                                 labels: availabilityRecords.map((record) =>
-                                    new Date(record.date).toLocaleDateString(undefined, { timeZone: "UTC" })
+                                    new Date(record.date).toLocaleDateString("en-US", { timeZone: "UTC" })
                                 ),
                                 datasets: [
                                     {
@@ -920,7 +911,7 @@ export default function EditRoomTypePage() {
                 <h2 className="text-2xl font-bold mb-4 heading">
                     Booking Calendar
                 </h2>
-                <div className="flex justify-between items-center mb-2">
+                <div className="calendar-controls flex justify-between items-center mb-2">
                     <button
                         className="px-2 py-1 bg-gray-300 rounded dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
                         onClick={() =>
@@ -942,7 +933,7 @@ export default function EditRoomTypePage() {
                         Prev Month
                     </button>
                     <div className="font-semibold">
-                        {currentMonth.toLocaleString("default", {
+                        {currentMonth.toLocaleString("en-US", {
                             month: "long",
                             year: "numeric",
                             timeZone: "UTC",
@@ -969,7 +960,8 @@ export default function EditRoomTypePage() {
                         Next Year
                     </button>
                 </div>
-                <div className="grid grid-cols-7 gap-2">
+                <p className="text-xs muted mb-3">Each cell shows the day and rooms available. Stay dates use UTC.</p>
+                <div className="calendar-grid grid grid-cols-7 gap-2">
                     {/* Render day headers */}
                     {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(
                         (d, idx) => (
@@ -1000,9 +992,12 @@ export default function EditRoomTypePage() {
                                     formatDate(new Date(r.date)) === formatted
                             );
                             cells.push(
-                                <div
+                                <button
+                                    type="button"
+                                    disabled={!record}
+                                    aria-label={`${formatted}: ${record ? `${record.availability} of ${formData.currentAvailability} rooms available` : "No availability record"}`}
                                     key={day}
-                                    className={`p-2 border rounded text-center dark:border-white/15 ${
+                                    className={`calendar-cell border rounded text-center dark:border-white/15 ${
                                         record
                                             ? "cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-500/20"
                                             : "bg-gray-200 text-gray-500 dark:bg-zinc-800 dark:text-zinc-400 cursor-not-allowed"
@@ -1027,12 +1022,12 @@ export default function EditRoomTypePage() {
                                     <div className="font-semibold">{day}</div>
                                     {record ? (
                                         <div className="text-xs">
-                                            {record.availability} available
+                                            {record.availability}<span className="hidden sm:inline"> available</span>
                                         </div>
                                     ) : (
-                                        <div className="text-xs">No record</div>
+                                        <div className="text-xs" aria-hidden="true">—</div>
                                     )}
-                                </div>
+                                </button>
                             );
                         }
                         return cells;
@@ -1040,6 +1035,7 @@ export default function EditRoomTypePage() {
                 </div>
             </div>
 
+            <details className="surface p-4 mt-6"><summary className="font-semibold cursor-pointer">Availability data (text view)</summary><div className="max-h-64 overflow-y-auto mt-3"><ul className="text-sm space-y-2">{availabilityRecords.map((record) => <li key={formatDate(new Date(record.date))}>{formatDate(new Date(record.date))}: {record.availability} of {formData.currentAvailability} rooms available</li>)}</ul></div></details>
             {/* Reservations Section */}
             <div className="mt-8">
                 <h2 className="text-2xl font-bold mb-4 heading">Reservations</h2>
@@ -1064,13 +1060,13 @@ export default function EditRoomTypePage() {
                                     <strong>Check-In:</strong>{" "}
                                     {new Date(
                                         resv.checkIn
-                                    ).toLocaleDateString(undefined, { timeZone: "UTC" })}
+                                    ).toLocaleDateString("en-US", { timeZone: "UTC" })}
                                 </p>
                                 <p>
                                     <strong>Check-Out:</strong>{" "}
                                     {new Date(
                                         resv.checkOut
-                                    ).toLocaleDateString(undefined, { timeZone: "UTC" })}
+                                    ).toLocaleDateString("en-US", { timeZone: "UTC" })}
                                 </p>
                                 <p>
                                     <strong>Price:</strong> ${resv.price}
@@ -1086,9 +1082,10 @@ export default function EditRoomTypePage() {
                                             cancelReservationId
                                         )
                                     }
+                                    disabled={cancellingReservation !== null}
                                     className="mt-4 md:mt-0 bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 dark:hover:bg-red-500 transition-colors"
                                 >
-                                    Cancel Reservation
+                                    {cancellingReservation === resv.id ? "Cancelling..." : "Cancel Reservation"}
                                 </button>
                             )}
                         </div>
@@ -1096,6 +1093,27 @@ export default function EditRoomTypePage() {
                 })}
             </div>
 
+<section className="danger-zone mt-8 p-5 border border-red-200 dark:border-red-900 rounded-xl"><h2 className="font-semibold heading">Delete room type</h2><p className="text-sm muted my-3">Permanently remove this room type and its availability. Review the confirmation before continuing.</p><button
+                type="button"
+                onClick={handleDeleteRoomType}
+                className="button-secondary text-red-700 dark:text-red-300"
+                title="Delete Room Type"
+            >
+                <svg aria-hidden="true"
+                    xmlns="http://www.w3.org/2000/svg"
+                    className="h-6 w-6"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                >
+                    <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-4h4a1 1 0 011 1v2H9V4a1 1 0 011-1z"
+                    />
+                </svg><span>Delete room type</span>
+            </button></section>
             {/* Back Button */}
             <div className="mt-6 text-center">
                 <button

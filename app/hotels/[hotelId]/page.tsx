@@ -1,5 +1,7 @@
 "use client";
 
+import ImageGallery from "@/app/components/ImageGallery";
+
 import { sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
@@ -35,7 +37,7 @@ interface Hotel {
 export default function HotelDetailsPage() {
   const { hotelId } = useParams();
   const [hotel, setHotel] = useState<Hotel | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -67,8 +69,8 @@ export default function HotelDetailsPage() {
 
   return (
     <div className="max-w-5xl mx-auto p-8 card">
-      {loading && <p className="muted">Loading hotel details...</p>}
-      {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+      {loading && <p role="status" className="muted">Loading hotel details...</p>}
+      {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
       {hotel ? (
         <>
           <div className="flex flex-col md:flex-row items-center">
@@ -96,33 +98,17 @@ export default function HotelDetailsPage() {
               </p>
             </div>
           </div>
+          <Link className="button-primary mt-6" href="/hotels">Check dates & availability</Link>
           {/* Gallery Section */}
           <div className="mt-8">
             <h2 className="text-2xl font-semibold heading mb-4">Gallery</h2>
-            {hotel.images && hotel.images.length > 0 ? (
-              <div className="flex space-x-4 overflow-x-auto pb-2 scrollbar-thin scrollbar-thumb-gray-400">
-                {hotel.images.map((imgUrl, index) => (
-                  <div key={index} className="relative w-64 h-48 flex-shrink-0">
-                    <Image
-                      src={imgUrl}
-                      alt={`Image ${index + 1} of ${hotel.name}`}
-                      fill
-                      className="object-cover rounded shadow-md dark:shadow-none dark:border dark:border-white/10"
-                    />
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="p-4 border rounded text-center text-gray-500 dark:border-white/10 dark:text-zinc-400">
-                No images available.
-              </div>
-            )}
+            <ImageGallery images={hotel.images ?? []} name={hotel.name} />
           </div>
           {/* Room Types Section */}
           {hotel.roomTypes && hotel.roomTypes.length > 0 && (
             <div className="mt-8">
               <h2 className="text-2xl font-semibold heading mb-4">
-                Available Room Types
+                Choose your room
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {hotel.roomTypes.map((room) => (
@@ -143,7 +129,7 @@ export default function HotelDetailsPage() {
                       <strong>Price:</strong> ${room.pricePerNight}/night
                     </p>
                     <p className="muted text-sm mt-1">
-                      <strong>Configured capacity:</strong> {room.currentAvailability} rooms. Search with stay dates for availability.
+                      <strong>Configured capacity:</strong> {room.currentAvailability} {room.currentAvailability === 1 ? "room" : "rooms"}. Search with stay dates for availability.
                     </p>
                     {room.amenities && (
                       <p className="muted text-sm mt-1">

@@ -62,8 +62,10 @@ export default function RootLayout({
         <ThemeProvider>
           <FeedbackProvider>
             <SessionProvider>
+            <a href="#main-content" className="skip-link">Skip to content</a>
             <NavigationBar />
-            {children}
+            <main id="main-content" className="app-main" tabIndex={-1}>{children}</main>
+            <footer className="site-footer"><a href="/">FlyNext</a><span>A portfolio travel demo. No real payments.</span><a href="/hotels/owner">Host workspace</a></footer>
             </SessionProvider>
           </FeedbackProvider>
         </ThemeProvider>

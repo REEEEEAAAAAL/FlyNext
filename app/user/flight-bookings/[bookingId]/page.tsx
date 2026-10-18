@@ -1,5 +1,7 @@
 "use client";
 
+import { loginUrl } from "@/app/lib/return-path";
+
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
@@ -116,7 +118,7 @@ export default function FlightBookingDetailsPage() {
     const params = useParams();
     const { confirm, error: showError, success, info } = useFeedback();
     const [booking, setBooking] = useState<FlightBooking | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [actionLoading, setActionLoading] = useState({
         verify: false,
@@ -133,7 +135,7 @@ export default function FlightBookingDetailsPage() {
     const refreshToken = async () => {
         const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
         const response = await sessionFetch("/api/user", {
@@ -155,7 +157,7 @@ export default function FlightBookingDetailsPage() {
     useEffect(() => {
         const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
         /*
@@ -213,7 +215,7 @@ export default function FlightBookingDetailsPage() {
     const handleVerifyFlight = async () => {
         const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
 
@@ -281,7 +283,7 @@ export default function FlightBookingDetailsPage() {
     const handleCancelFlight = async () => {
         const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
 

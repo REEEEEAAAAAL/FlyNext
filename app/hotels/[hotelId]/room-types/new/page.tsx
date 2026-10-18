@@ -1,5 +1,9 @@
 "use client";
 
+import HostNavigation from "@/app/components/HostNavigation";
+
+import { loginUrl } from "@/app/lib/return-path";
+
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
@@ -27,7 +31,6 @@ export default function CreateRoomTypePage() {
     // For images.
     const [selectedImages, setSelectedImages] = useState<SelectedImage[]>([]);
 
-    const [loading, setLoading] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [error, setError] = useState("");
 
@@ -37,7 +40,7 @@ export default function CreateRoomTypePage() {
             const token = getAccessToken();
             if (!token) {
                 // Redirect to login if no token found.
-                router.push("/auth/login");
+                router.push(loginUrl());
                 return;
             }
 
@@ -110,7 +113,7 @@ export default function CreateRoomTypePage() {
             const token = getAccessToken();
             if (!token) {
                 // Redirect to login if no token found.
-                router.push("/auth/login");
+                router.push(loginUrl());
                 return;
             }
 
@@ -181,6 +184,7 @@ export default function CreateRoomTypePage() {
 
     return (
         <div className="max-w-3xl mx-auto p-8 card text-black dark:text-zinc-100">
+            <HostNavigation hotelHref={`/hotels/${hotelId}/edit`} />
             <h1 className="text-3xl font-bold mb-6 heading">
                 Create New Room Type
             </h1>
@@ -190,10 +194,10 @@ export default function CreateRoomTypePage() {
             <form onSubmit={handleSubmit} className="space-y-6">
                 {/* Room Type Name */}
                 <div>
-                    <label className="label mb-1">
+                    <label htmlFor="field-1" className="label mb-1">
                         Room Type Name:
                     </label>
-                    <input
+                    <input id="field-1"
                         type="text"
                         name="name"
                         value={formData.name}
@@ -205,10 +209,10 @@ export default function CreateRoomTypePage() {
                 </div>
                 {/* Amenities */}
                 <div>
-                    <label className="label mb-1">
+                    <label htmlFor="field-2" className="label mb-1">
                         Amenities:
                     </label>
-                    <input
+                    <input id="field-2"
                         type="text"
                         name="amenities"
                         value={formData.amenities}
@@ -219,10 +223,10 @@ export default function CreateRoomTypePage() {
                 </div>
                 {/* Price Per Night */}
                 <div>
-                    <label className="label mb-1">
+                    <label htmlFor="field-3" className="label mb-1">
                         Price Per Night ($):
                     </label>
-                    <input
+                    <input id="field-3"
                         type="number"
                         name="pricePerNight"
                         value={formData.pricePerNight}
@@ -239,10 +243,10 @@ export default function CreateRoomTypePage() {
                 </div>
                 {/* Current Availability */}
                 <div>
-                    <label className="label mb-1">
+                    <label htmlFor="field-4" className="label mb-1">
                         Total Room Capacity:
                     </label>
-                    <input
+                    <input id="field-4"
                         type="number"
                         name="currentAvailability"
                         value={formData.currentAvailability}

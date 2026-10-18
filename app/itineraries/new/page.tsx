@@ -1,5 +1,10 @@
 "use client";
 
+import { loginUrl } from "@/app/lib/return-path";
+
+import BookingSteps from "@/app/components/BookingSteps";
+import Link from "next/link";
+
 import { bookingRequest } from "@/app/lib/booking-request";
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
@@ -28,7 +33,7 @@ function formatDay(value: Date | string | null | undefined): string {
   if (value === null || value === undefined) return "N/A";
   if (typeof value === "string" && value.trim().length === 0) return "N/A";
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "N/A" : parsed.toLocaleDateString();
+  return Number.isNaN(parsed.getTime()) ? "N/A" : parsed.toLocaleDateString("en-US");
 }
 
 /**
@@ -131,7 +136,7 @@ export default function CreateItineraryPage() {
   useEffect(() => {
     const token = getAccessToken();
     if (!token) {
-      router.push("/auth/login");
+      router.push(loginUrl());
       return;
     }
     const fetchBookings = async () => {
@@ -222,7 +227,7 @@ export default function CreateItineraryPage() {
     }
     const token = getAccessToken();
     if (!token) {
-      router.push("/auth/login");
+      router.push(loginUrl());
       return;
     }
 
@@ -269,9 +274,11 @@ export default function CreateItineraryPage() {
 
   return (
     <div className="max-w-3xl mx-auto p-8 card text-[var(--text)]">
-      <h1 className="text-3xl font-bold mb-6 heading">Create Itinerary</h1>
-      {loading && <p className="muted">Loading bookings...</p>}
-      {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+      <BookingSteps current="plan" />
+      <h1 className="text-3xl font-bold mb-6 heading">Bring your trip together</h1>
+      <p className="search-intro">Choose one flight reservation, one hotel reservation, or both. You can review the total before confirming with DEMO payment.</p>
+      {loading && <p role="status" className="muted">Loading bookings...</p>}
+      {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
       
       <div className="mb-4">
         <h2 className="text-xl font-semibold heading">
@@ -302,7 +309,7 @@ export default function CreateItineraryPage() {
           </select>
         ) : (
           !loading && (
-            <p className="muted">No unlinked flight bookings available.</p>
+            <p className="muted">No unlinked flight bookings available. <Link className="text-blue-600 dark:text-blue-300 underline" href="/flights">Find a flight</Link></p>
           )
         )}
       </div>
@@ -328,7 +335,7 @@ export default function CreateItineraryPage() {
           </select>
         ) : (
           !loading && (
-            <p className="muted">No unlinked hotel bookings available.</p>
+            <p className="muted">No unlinked hotel bookings available. <Link className="text-blue-600 dark:text-blue-300 underline" href="/hotels">Find a stay</Link></p>
           )
         )}
       </div>
@@ -340,7 +347,7 @@ export default function CreateItineraryPage() {
          * that still invites a click there is how one selection becomes two
          * itineraries.
          */
-        disabled={submitting}
+        disabled={loading || submitting || (selectedFlightId === "" && selectedHotelId === "")}
         className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-500"
       >
         {submitting ? "Creating..." : "Create Itinerary"}

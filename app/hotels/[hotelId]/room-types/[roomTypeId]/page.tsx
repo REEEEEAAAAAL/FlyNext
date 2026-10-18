@@ -1,5 +1,8 @@
 "use client";
 
+import ImageGallery from "@/app/components/ImageGallery";
+import Link from "next/link";
+
 import { sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
@@ -17,7 +20,7 @@ interface RoomType {
 export default function RoomTypeDetailsPage() {
   const { hotelId, roomTypeId } = useParams() as { hotelId: string; roomTypeId: string };
   const [roomType, setRoomType] = useState<RoomType | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -47,8 +50,8 @@ export default function RoomTypeDetailsPage() {
 
   return (
     <div className="card max-w-4xl mx-auto p-8 text-black dark:text-zinc-100">
-      {loading && <p className="muted">Loading room type details...</p>}
-      {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+      {loading && <p role="status" className="muted">Loading room type details...</p>}
+      {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
       {roomType && (
         <div>
           <h1 className="text-3xl font-bold mb-4 heading">{roomType.name}</h1>
@@ -56,28 +59,13 @@ export default function RoomTypeDetailsPage() {
             <strong>Amenities:</strong> {roomType.amenities}
           </p>
           <p className="text-gray-700 dark:text-zinc-200 mb-2">
-            <strong>Price Per Night:</strong> ${roomType.pricePerNight}
+            <strong>Price Per Night:</strong> ${roomType.pricePerNight.toFixed(2)} USD
           </p>
           <p className="text-gray-700 dark:text-zinc-200 mb-2">
             <strong>Configured capacity:</strong> {roomType.currentAvailability}. Search with stay dates for availability.
           </p>
-          {roomType.images && roomType.images.length > 0 ? (
-            <div className="mt-6">
-              <h2 className="text-2xl font-semibold heading mb-3">Gallery</h2>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {roomType.images.map((imgUrl, index) => (
-                  <img
-                    key={index}
-                    src={imgUrl}
-                    alt={`Image ${index + 1} of ${roomType.name}`}
-                    className="w-full h-48 object-cover rounded"
-                  />
-                ))}
-              </div>
-            </div>
-          ) : (
-            <p className="text-gray-700 dark:text-zinc-200 mt-6">The owner has not provided any images for this room.</p>
-          )}
+          <div className="mt-6"><ImageGallery images={roomType.images ?? []} name={roomType.name} /></div>
+          <div className="mt-6 flex flex-wrap gap-3"><Link className="button-primary" href="/hotels">Select dates & reserve</Link><Link className="button-secondary" href={`/hotels/${hotelId}`}>Back to hotel</Link></div>
         </div>
       )}
       {!loading && !error && !roomType && (

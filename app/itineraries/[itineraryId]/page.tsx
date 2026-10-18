@@ -1,5 +1,7 @@
 "use client";
 
+import { loginUrl } from "@/app/lib/return-path";
+
 import { formatStayDate } from "@/app/lib/booking-display";
 
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
@@ -75,7 +77,7 @@ export default function ItineraryDetailsPage() {
     const params = useParams();
     const { confirm, success, error: toastError, info } = useFeedback();
     const [itinerary, setItinerary] = useState<ItineraryDetail | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     /*
      * One busy flag per action, used only to label and disable its own button.
@@ -91,7 +93,7 @@ export default function ItineraryDetailsPage() {
     useEffect(() => {
         const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
 
@@ -138,7 +140,7 @@ export default function ItineraryDetailsPage() {
     const formatDate = (dateString: string) => {
         if (!dateString) return "N/A";
         const date = new Date(dateString);
-        return date.toLocaleDateString();
+        return date.toLocaleDateString("en-US");
     };
 
     /*
@@ -234,11 +236,11 @@ export default function ItineraryDetailsPage() {
         const confirmed = await confirm({
             title: "Cancel this flight?",
             description:
-                "The flight on this itinerary will be cancelled with the airline. This cannot be undone.",
+                "The demo flight reservation on this itinerary will be cancelled. This cannot be undone.",
             points: [
                 "The ticket is released and the seat is no longer held.",
                 "This itinerary's total is reduced by the flight's price.",
-                "Re-booking later means paying whatever the fare is then.",
+                "A new reservation uses the fare available at that time. No money is charged in this demo.",
             ],
             confirmLabel: "Yes, cancel flight",
             cancelLabel: "Keep my flight",
@@ -385,7 +387,7 @@ export default function ItineraryDetailsPage() {
             description: `Cancelling will release ${subject}. This cannot be undone.`,
             points: [
                 "Every reservation on the itinerary is cancelled with its provider.",
-                "Refunds follow the provider's policy; this action does not issue one.",
+                "This is a demo cancellation. No real payment or refund takes place.",
                 "The itinerary is marked CANCELLED and cannot be checked out.",
             ],
             confirmLabel: "Yes, cancel everything",
@@ -468,7 +470,7 @@ export default function ItineraryDetailsPage() {
                 </Link>
             </div>
 
-            <div className="flex justify-between items-center mb-5">
+            <div className="flex flex-wrap gap-4 justify-between items-center mb-5">
                 <h1 className="text-3xl font-bold mb-6 heading">
                     Itinerary Details
                 </h1>
@@ -483,11 +485,12 @@ export default function ItineraryDetailsPage() {
                         href={`/checkout?itineraryId=${itinerary.id}`}
                         className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded dark:bg-emerald-600 dark:hover:bg-emerald-500"
                     >
-                        Proceed to Checkout
+                        Review & confirm demo
                     </Link>
                 )}
             </div>
 
+            {itinerary.status === "CONFIRMED" && <Link className="button-primary mb-6" href={`/checkout?itineraryId=${itinerary.id}`}>View confirmation & demo receipt</Link>}
             <div className="space-y-6">
                 <div className="p-6 border border-gray-300 dark:border-white/10 rounded bg-gray-50 dark:bg-white/5">
                     <div className="flex justify-between items-start mb-4">
@@ -514,7 +517,7 @@ export default function ItineraryDetailsPage() {
                     {/* Flight Reservation Section */}
                     {itinerary.flight && (
                         <div className="mb-6 p-4 border border-gray-200 dark:border-white/10 rounded p-3 bg-blue-50 dark:bg-blue-500/10">
-                            <div className="flex justify-between items-center mb-4">
+                            <div className="flex flex-wrap gap-4 justify-between items-center mb-4">
                                 <h3 className="text-lg font-semibold heading">
                                     Flight Reservation
                                 </h3>
@@ -622,7 +625,7 @@ export default function ItineraryDetailsPage() {
                                 </div>
                             </div>
 
-                            <div className="mt-4 flex justify-between items-center">
+                            <div className="mt-4 flex flex-wrap gap-4 justify-between items-center">
                                 <div>
                                     <p className="text-gray-700 dark:text-zinc-200">
                                         <span className="font-medium">
@@ -686,7 +689,7 @@ export default function ItineraryDetailsPage() {
                     {/* Hotel Reservation Section */}
                     {itinerary.hotel && (
                         <div className="p-4 border border-gray-200 dark:border-white/10 rounded p-3 bg-green-50 dark:bg-emerald-500/10">
-                            <div className="flex justify-between items-center mb-4">
+                            <div className="flex flex-wrap gap-4 justify-between items-center mb-4">
                                 <h3 className="text-lg font-semibold heading">
                                     Hotel Reservation
                                 </h3>
@@ -749,7 +752,7 @@ export default function ItineraryDetailsPage() {
                                 </div>
                             </div>
 
-                            <div className="mt-4 flex justify-between items-center">
+                            <div className="mt-4 flex flex-wrap gap-4 justify-between items-center">
                                 <div>
                                     <p className="text-gray-700 dark:text-zinc-200">
                                         <span className="font-medium">

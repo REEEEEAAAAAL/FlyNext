@@ -1,5 +1,9 @@
 "use client";
 
+import { loginUrl } from "@/app/lib/return-path";
+
+import EmptyState from "@/app/components/EmptyState";
+
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
@@ -104,7 +108,7 @@ export default function UserFlightBookingsPage() {
     const router = useRouter();
     const { error: showError } = useFeedback();
     const [bookings, setBookings] = useState<FlightBooking[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
     /**
@@ -118,7 +122,7 @@ export default function UserFlightBookingsPage() {
     const refreshToken = async () => {
         const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
         const response = await sessionFetch("/api/user", {
@@ -142,7 +146,7 @@ export default function UserFlightBookingsPage() {
         const token = getAccessToken();
         if (!token) {
             // Redirect to login if no token found.
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
 
@@ -209,7 +213,7 @@ export default function UserFlightBookingsPage() {
             {loading && (
                 <p className="muted">Loading flight bookings...</p>
             )}
-            {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+            {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
             {bookings.length > 0 ? (
                 <div className="space-y-4">
                     {bookings.map((booking) => {
@@ -228,7 +232,7 @@ export default function UserFlightBookingsPage() {
                                 key={booking.id}
                                 className="p-6 border border-gray-300 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                             >
-                                <div className="flex justify-between items-start">
+                                <div className="booking-card-header flex flex-wrap gap-4 justify-between items-start">
                                     <div>
                                         {/*
                                          * The heading is the short, readable booking
@@ -298,7 +302,7 @@ export default function UserFlightBookingsPage() {
                  * loaded at all.
                  */
                 !loading && !error && (
-                    <p className="muted">No flight bookings found.</p>
+                    <EmptyState title="Ready for takeoff?" description="Your flight reservations will appear here. Find a route to start planning." href="/flights" action="Explore flights" />
                 )
             )}
         </div>

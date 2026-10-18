@@ -1,5 +1,9 @@
 "use client";
 
+import { loginUrl } from "@/app/lib/return-path";
+
+import EmptyState from "@/app/components/EmptyState";
+
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
@@ -26,7 +30,7 @@ export default function UserHotelBookingsPage() {
     const router = useRouter();
     const { error: showError } = useFeedback();
     const [bookings, setBookings] = useState<HotelBooking[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
     /**
@@ -40,7 +44,7 @@ export default function UserHotelBookingsPage() {
     const refreshToken = async () => {
         const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
         const response = await sessionFetch("/api/user", {
@@ -62,7 +66,7 @@ export default function UserHotelBookingsPage() {
     useEffect(() => {
         const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
         refreshToken();
@@ -133,7 +137,7 @@ export default function UserHotelBookingsPage() {
             {loading && (
                 <p className="muted">Loading hotel bookings...</p>
             )}
-            {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+            {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
             {bookings.length > 0 ? (
                 <div className="space-y-4">
                     {bookings.map((booking) => {
@@ -144,7 +148,7 @@ export default function UserHotelBookingsPage() {
                                 key={booking.id}
                                 className="p-6 border border-gray-300 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                             >
-                                <div className="flex justify-between items-start">
+                                <div className="booking-card-header flex flex-wrap gap-4 justify-between items-start">
                                     <div>
                                         <h2 className="text-xl font-semibold mb-2">
                                             Booking #{booking.reference}
@@ -237,7 +241,7 @@ export default function UserHotelBookingsPage() {
                  * loaded at all.
                  */
                 !loading && !error && (
-                    <p className="muted">No hotel bookings found.</p>
+                    <EmptyState title="Find somewhere to settle in" description="Your hotel reservations will appear here, with stay dates and cancellation options." href="/hotels" action="Find a stay" />
                 )
             )}
         </div>

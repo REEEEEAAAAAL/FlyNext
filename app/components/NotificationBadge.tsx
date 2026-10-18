@@ -175,10 +175,11 @@ export default function NotificationBadge() {
     }, [pathname, fetchNotificationCount]);
 
     return (
-        <Link href="/notifications">
+        <Link href="/notifications" className="button-secondary !p-2" aria-label={`Notifications${count ? `, ${count} unread` : ""}`}>
             <div className="relative cursor-pointer">
                 <svg
-                    className="w-6 h-6 text-white dark:text-zinc-200"
+                    aria-hidden="true"
+                    className="w-5 h-5"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

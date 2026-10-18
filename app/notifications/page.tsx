@@ -1,5 +1,7 @@
 "use client";
 
+import { loginUrl } from "@/app/lib/return-path";
+
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import { useState, useEffect } from "react";
@@ -25,7 +27,7 @@ export default function NotificationsPage() {
         const token = getAccessToken();
         if (!token) {
             // Redirect to login if no token found.
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
 
@@ -98,26 +100,26 @@ export default function NotificationsPage() {
         );
       } else {
         const data = await res.json();
-        console.error(data.error || "Failed to mark notification as read.");
+        setError(data.error || "Could not mark this notification as read. Please try again.");
       }
     } catch (err) {
-      console.error("An error occurred while marking notification as read.");
+      setError("Could not mark this notification as read. Please try again.");
     }
   };
 
   return (
     <div className="min-h-screen max-w-3xl mx-auto p-8 text-[var(--text)]">
       <h1 className="text-3xl font-bold mb-6 heading">Notifications</h1>
-      {loading && <p className="muted">Loading notifications...</p>}
-      {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
-      {!loading && notifications.length === 0 && (
-        <p className="muted">No notifications found.</p>
+      {loading && <p role="status" className="muted">Loading notifications...</p>}
+      {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
+      {!loading && !error && notifications.length === 0 && (
+        <p className="muted">You’re all caught up. Booking updates will appear here.</p>
       )}
       <ul className="space-y-4">
         {notifications.map((notif) => (
           <li
             key={notif.id}
-            className={`p-4 flex justify-between items-center rounded-lg border transition-colors ${
+            className={`p-4 flex flex-wrap gap-4 justify-between items-center rounded-lg border transition-colors ${
               /*
                * Unread rows get a blue tint instead of a heavier border, so the
                * "needs attention" signal survives on a dark canvas without
@@ -131,7 +133,7 @@ export default function NotificationsPage() {
             <div>
               <p className="text-gray-800 dark:text-zinc-100">{notif.content}</p>
               <p className="text-sm text-gray-500 dark:text-zinc-400">
-                {new Date(notif.createdAt).toLocaleString()}
+                {new Date(notif.createdAt).toLocaleString("en-US")}
               </p>
             </div>
             {!notif.isRead && (

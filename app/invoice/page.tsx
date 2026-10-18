@@ -1,5 +1,7 @@
 "use client";
 
+import { loginUrl } from "@/app/lib/return-path";
+
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import { Suspense, useState, useEffect } from "react";
@@ -26,7 +28,7 @@ function InvoicePageContent() {
                  * would leave them on it, looking at the invoice request's own red
                  * "Unauthorized" with no way forward.
                  */
-                router.push("/auth/login");
+                router.push(loginUrl());
                 return;
             }
 
@@ -119,8 +121,8 @@ function InvoicePageContent() {
     return (
         <div className="max-w-4xl mx-auto p-8 card text-[var(--text)]">
             <h1 className="text-3xl font-bold mb-6 heading">Invoice</h1>
-            {loading && <p className="muted">Generating invoice...</p>}
-            {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+            {loading && <p role="status" className="muted">Generating invoice...</p>}
+            {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
             {pdfUrl && (
                 /*
                  * A PDF viewer paints its own white page, so the frame keeps a

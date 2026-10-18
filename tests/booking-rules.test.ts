@@ -11,12 +11,13 @@ describe("UTC hotel calendar and all-leg flight verification", () => {
 			const previous = process.env.TZ;
 			try {
 				process.env.TZ = zone;
-				for (const [start, end] of [["2026-03-07", "2026-03-10"], ["2026-10-31", "2026-11-03"]]) {
+				for (const [start, end, expectedStart, expectedEnd] of [["2026-03-07", "2026-03-10", "3/7/2026", "3/10/2026"], ["2026-10-31", "2026-11-03", "10/31/2026", "11/3/2026"]]) {
 					const stay = parseStayRange(start, end);
 					expect(stay.nights).toBe(3);
 					expect(eachNight(stay.checkIn, stay.checkOut)).toHaveLength(3);
 					expect(parseDateOnly(start, "date").toISOString()).toBe(`${start}T00:00:00.000Z`);
-					expect(formatStayDate(`${start}T00:00:00.000Z`)).toBe(new Date(`${start}T12:00:00.000Z`).toLocaleDateString());
+					expect(formatStayDate(`${start}T00:00:00.000Z`)).toBe(expectedStart);
+					expect(formatStayDate(`${end}T00:00:00.000Z`)).toBe(expectedEnd);
 				}
 			} finally { if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous; }
 		});
