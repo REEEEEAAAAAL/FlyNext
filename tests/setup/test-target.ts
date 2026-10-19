@@ -2,10 +2,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { assertSeparateBusinessDatabases, type RemoteTestApproval } from "../../lib/database-safety";
 import { parseEnvFile } from "./env-file";
+import { assertCiDatabaseTarget, ciBusinessDatabaseUrls } from "../../lib/ci-database-safety";
 
 export const approvalPath = resolve(process.cwd(), ".neon-test-approval.json");
 export function businessDatabaseUrls(): string[] {
-	const urls: string[] = [];
+	const urls: string[] = process.env.CI === "true"
+		? ciBusinessDatabaseUrls(process.env.CI_BUSINESS_DATABASE_TARGETS) : [];
 	for (const name of [".env", ".env.local", ".env.development", ".env.development.local", ".env.production", ".env.production.local", ".database-maintenance/production.env", ".database-maintenance/production-migration.env"]) {
 		if (!existsSync(name)) continue;
 		const env = parseEnvFile(name);
@@ -19,6 +21,7 @@ export function remoteApproval(databaseUrl: string): RemoteTestApproval | undefi
 	let url: URL;
 	try { url = new URL(databaseUrl); }
 	catch { throw new Error("Invalid test DATABASE_URL (credentials redacted)."); }
+	if (process.env.CI === "true") assertCiDatabaseTarget(databaseUrl, process.env);
 	if (["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) return undefined;
 	assertSeparateBusinessDatabases(databaseUrl, businessDatabaseUrls());
 	if (!existsSync(approvalPath)) throw new Error("Neon test target is not enrolled. See docs/DEVELOPMENT.md; no writes performed.");

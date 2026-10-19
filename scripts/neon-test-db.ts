@@ -6,6 +6,7 @@ import { assertDisposableDatabase, assertSeparateBusinessDatabases, databaseFing
 import { parseEnvFile } from "../tests/setup/env-file";
 import { approvalPath, businessDatabaseUrls, migrationDatabaseUrl } from "../tests/setup/test-target";
 import { verifyTestDatabase } from "../tests/support/safety";
+import { assertCiDatabaseTarget } from "../lib/ci-database-safety";
 
 async function main() {
 	if (process.argv[2] === "check") {
@@ -26,6 +27,7 @@ async function main() {
 		if (source.NODE_ENV === "production" || source.VERCEL || source.VERCEL_ENV || source.NETLIFY || source.RENDER_SERVICE_ID) throw new Error("Enrollment refused in deployment context.");
 	}
 	const url = new URL(file.DATABASE_URL);
+	if (process.env.CI === "true") assertCiDatabaseTarget(url.href, process.env);
 	if (!url.hostname.endsWith(".neon.tech")) throw new Error("Enrollment is only for the explicitly designated Neon test database.");
 	assertSeparateBusinessDatabases(url.href, businessDatabaseUrls());
 	const approval: RemoteTestApproval = { version: 1, fingerprint: databaseFingerprint(url.href), databaseOid: "0", id: randomUUID() };

@@ -38,7 +38,7 @@ export function assertDisposableDatabase(env: OperationEnvironment, purpose: "in
 	if (url.hash || !url.username || !url.password) throw new Error("Database reset refused: explicit credentials and an unambiguous connection URL are required.");
 	const local = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
 	if (!local && (purpose !== "integration" || env.NODE_ENV !== "test" ||
-		!/^ep-[a-z0-9-]+\.[a-z0-9-]+\.(?:aws|azure)\.neon\.tech$/.test(url.hostname) ||
+		!/^ep-[a-z0-9-]+\.(?:c-\d+\.)?[a-z0-9-]+\.(?:aws|azure)\.neon\.tech$/.test(url.hostname) ||
 		!approval || approval.version !== 1 || approval.fingerprint !== databaseFingerprint(url.href) ||
 		!/^\d+$/.test(approval.databaseOid) || approval.id !== env.FLYNEXT_TEST_DATABASE_ID ||
 		!["require", "verify-full"].includes(url.searchParams.get("sslmode") ?? ""))) {

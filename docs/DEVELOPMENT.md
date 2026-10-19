@@ -33,7 +33,7 @@ npm run test:integration
 npm run test:e2e
 ```
 
-Run these commands in order. The Playwright runner builds the application and starts its own local server. Do not bypass the guarded runner or point tests at development or production data. CI requires its own isolated test database and restricted credentials.
+Run these commands in order, with `npm run build` before `npm run test:e2e`. The Playwright runner starts its own local server from that build. Do not bypass the guarded runner or point tests at development or production data. CI requires its own isolated test database and restricted credentials.
 
 ## Troubleshooting
 

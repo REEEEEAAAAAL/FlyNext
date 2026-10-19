@@ -1,12 +1,45 @@
 import { describe, expect, it, vi } from "vitest";
 import { assertDisposableDatabase, assertTestDatabaseIdentity, assertSeparateBusinessDatabases, databaseFingerprint } from "@/lib/database-safety";
 import { migrationDatabaseUrl, remoteApproval } from "./setup/test-target";
+import { assertCiDatabaseTarget, ciBusinessDatabaseUrls } from "@/lib/ci-database-safety";
 
 const id = "a1111111-1111-4111-8111-111111111111";
 const safe = {
 	NODE_ENV: "test", DATABASE_URL: "postgresql://flynext_test:synthetic@127.0.0.1:55432/flynext_test?schema=public",
 	FLYNEXT_ALLOW_DATABASE_RESET: "1", FLYNEXT_TEST_DATABASE_ID: id,
 };
+
+describe("CI database isolation configuration", () => {
+	const host = "ep-ci-example.us-east-2.aws.neon.tech";
+	const url = `postgresql://flynext_ci_runner:synthetic@${host}/flynext_test?sslmode=require`;
+	it("accepts only the explicitly allowlisted endpoint and CI role", () => {
+		const env = { CI_TEST_DATABASE_HOST: host };
+		expect(() => assertCiDatabaseTarget(url, env)).not.toThrow();
+		expect(() => assertCiDatabaseTarget(url.replace(host, host.replace(".us-", "-pooler.us-")), env)).not.toThrow();
+		for (const changed of [url.replace("ci-example", "another-example"), url.replace("flynext_ci_runner", "admin")]) {
+			expect(() => assertCiDatabaseTarget(changed, env)).toThrow();
+		}
+		expect(() => assertCiDatabaseTarget(url, {})).toThrow();
+		expect(() => assertCiDatabaseTarget(url, { CI_TEST_DATABASE_HOST: host.replace(".us-", "-pooler.us-") })).toThrow();
+	});
+	it.each([undefined, "invalid", "[]", "{}", '[null]', '[{"host":"invalid","database":"flynextdb"}]',
+		JSON.stringify([{ host, database: "flynextdb", password: "do-not-print" }])])("rejects missing or malformed exclusion metadata without disclosing values", value => {
+		expect(() => ciBusinessDatabaseUrls(value)).toThrow("credential-free");
+		try { ciBusinessDatabaseUrls(value); } catch (error) { expect(String(error)).not.toContain("do-not-print"); }
+	});
+	it("preserves physical exclusion across pooled and direct endpoints", () => {
+		const excluded = ciBusinessDatabaseUrls(JSON.stringify([{ host: host.replace(".us-", "-pooler.us-"), database: "flynext_test" }]));
+		expect(() => assertSeparateBusinessDatabases(url, excluded)).toThrow("business database");
+		expect(() => assertSeparateBusinessDatabases(url.replace("ci-example", "other-example"), excluded)).not.toThrow();
+	});
+	it("requires CI metadata even when local business files might exist", () => {
+		vi.stubEnv("CI", "true");
+		vi.stubEnv("CI_TEST_DATABASE_HOST", host);
+		vi.stubEnv("CI_BUSINESS_DATABASE_TARGETS", "[]");
+		try { expect(() => remoteApproval(url)).toThrow("credential-free"); }
+		finally { vi.unstubAllEnvs(); }
+	});
+});
 
 describe("destructive database tool boundaries", () => {
 	it("accepts only the explicitly opted-in dedicated local integration target", () => {
@@ -97,6 +130,27 @@ describe("enrolled remote Neon boundaries", () => {
 		await expect(assertTestDatabaseIdentity(async () => [row], env, approval)).resolves.toBeUndefined();
 		for (const change of [{ oid: "999" }, { role: "other" }, { marker: null }, { name: "neondb" }]) {
 			await expect(assertTestDatabaseIdentity(async () => [{ ...row, ...change }], env, approval)).rejects.toThrow("identity mismatch");
+		}
+	});
+});
+
+describe("Neon shard hostname enrollment boundaries", () => {
+	const host = "ep-ci-example.c-7.us-east-2.aws.neon.tech";
+	const url = `postgresql://flynext_ci_runner:synthetic@${host}/flynext_test?sslmode=require`;
+	it("accepts direct and pooled shard hosts with exact identity and TLS", () => {
+		for (const value of [url, url.replace(".c-7.", "-pooler.c-7.")]) {
+			assertCiDatabaseTarget(value, { CI_TEST_DATABASE_HOST: host });
+			const approval = { version: 1 as const, fingerprint: databaseFingerprint(value), databaseOid: "12345", id };
+			expect(assertDisposableDatabase({ ...safe, NODE_ENV: "test", DATABASE_URL: value }, "integration", approval).name).toBe("flynext_test");
+		}
+	});
+	it("keeps endpoint, routing, TLS and business exclusion restrictions", () => {
+		expect(() => assertCiDatabaseTarget(url, { CI_TEST_DATABASE_HOST: host.replace("c-7", "c-8") })).toThrow();
+		const excluded = ciBusinessDatabaseUrls(JSON.stringify([{ host, database: "flynext_test" }]));
+		expect(() => assertSeparateBusinessDatabases(url, excluded)).toThrow();
+		for (const value of [url.replace("c-7", "c-seven"), url.replace("require", "disable"), `${url}&host=production.invalid`]) {
+			const approval = { version: 1 as const, fingerprint: databaseFingerprint(value), databaseOid: "12345", id };
+			expect(() => assertDisposableDatabase({ ...safe, NODE_ENV: "test", DATABASE_URL: value }, "integration", approval)).toThrow();
 		}
 	});
 });

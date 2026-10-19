@@ -12,9 +12,15 @@ async function main() {
   const prisma=new PrismaClient({datasourceUrl:migrationDatabaseUrl(url.toString())});
   try {
     await verifyTestDatabase(prisma);
-    const roles=await prisma.$queryRawUnsafe<{unsafe:boolean}[]>(`SELECT (rolsuper OR rolcreatedb OR rolcreaterole OR rolbypassrls
+    const roles=await prisma.$queryRawUnsafe<{unsafe:boolean}[]>(`SELECT (rolsuper OR rolcreatedb OR rolcreaterole OR rolbypassrls OR rolreplication
       OR pg_has_role(current_user,'neon_superuser','MEMBER')) AS unsafe FROM pg_roles WHERE rolname=current_user`);
     if (roles.length!==1 || roles[0].unsafe) throw new Error("CI role must not have administrative privileges.");
+    const permissions=await prisma.$queryRawUnsafe<{ready:boolean}[]>(`SELECT
+      (datdba = (SELECT oid FROM pg_roles WHERE rolname=current_user)
+      AND has_schema_privilege(current_user, 'public', 'USAGE')
+      AND has_schema_privilege(current_user, 'public', 'CREATE')) AS ready
+      FROM pg_database WHERE datname=current_database()`);
+    if (permissions.length!==1 || !permissions[0].ready) throw new Error("CI role must own its disposable database and be able to migrate the public schema.");
     console.log("Dedicated CI database identity and non-administrative role verified.");
   } finally { await prisma.$disconnect(); }
 }

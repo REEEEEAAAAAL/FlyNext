@@ -14,8 +14,12 @@ jobs:
       NEXT_TELEMETRY_DISABLED: '1'
       DATABASE_URL: postgresql://build:build@127.0.0.1:1/build_only
       JWT_ACCESS_SECRET: build-only-secret-never-used-for-deployment
+      CI_TEST_DATABASE_HOST: ${{ vars.CI_TEST_DATABASE_HOST }}
+      CI_BUSINESS_DATABASE_TARGETS: ${{ vars.CI_BUSINESS_DATABASE_TARGETS }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
@@ -26,7 +30,22 @@ jobs:
           CI_TEST_ENV: ${{ secrets.CI_TEST_ENV }}
           CI_TEST_APPROVAL: ${{ secrets.CI_TEST_APPROVAL }}
         run: |
-          node -e 'const fs=require("fs"); for(const [key,file] of [["CI_TEST_ENV",".env.test"],["CI_TEST_APPROVAL",".neon-test-approval.json"]]) {if(!process.env[key]) throw new Error("Missing independently enrolled CI target"); fs.writeFileSync(file,process.env[key],{mode:0o600});}'
+          node <<'NODE'
+          const fs = require('fs');
+          for (const [key, file] of [['CI_TEST_ENV', '.env.test'], ['CI_TEST_APPROVAL', '.neon-test-approval.json']]) {
+            const value = process.env[key];
+            if (!value) throw new Error('Missing independently enrolled CI target');
+            if (key === 'CI_TEST_ENV') {
+              for (const line of value.split(/\r?\n/)) {
+                const match = line.match(/^[A-Z_][A-Z0-9_]*=(.*)$/);
+                const raw = match?.[1].trim();
+                const secret = raw?.replace(/^(["'])(.*)\1$/, '$2');
+                if (secret) console.log('::add-mask::' + secret.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A'));
+              }
+            }
+            fs.writeFileSync(file, value, { mode: 0o600, flag: 'wx' });
+          }
+          NODE
       - run: node node_modules/tsx/dist/cli.mjs scripts/verify-ci-target.ts
       - run: npm run test:integration
       - run: npm run build
@@ -40,3 +59,6 @@ jobs:
             playwright-report/
             test-results/browser/
           retention-days: 3
+      - name: 清理临时凭据
+        if: always()
+        run: rm -f -- .env.test .neon-test-approval.json
