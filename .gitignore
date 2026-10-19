@@ -65,3 +65,9 @@ repair-flight-directions.backup.json
 /.local-test-db/
 /.neon-test-approval.json
 /.database-maintenance/
+/playwright-report/
+/test-results/
+/.e2e-next/
+
+# Private local development records and production operation files
+/docs/internal/

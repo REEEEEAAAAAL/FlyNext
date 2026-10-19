@@ -6,7 +6,7 @@ import { parseEnvFile } from "./env-file";
 export const approvalPath = resolve(process.cwd(), ".neon-test-approval.json");
 export function businessDatabaseUrls(): string[] {
 	const urls: string[] = [];
-	for (const name of [".env", ".env.local", ".env.development", ".env.development.local", ".env.production", ".env.production.local"]) {
+	for (const name of [".env", ".env.local", ".env.development", ".env.development.local", ".env.production", ".env.production.local", ".database-maintenance/production.env", ".database-maintenance/production-migration.env"]) {
 		if (!existsSync(name)) continue;
 		const env = parseEnvFile(name);
 		for (const key of ["DATABASE_URL", "DIRECT_URL", "POSTGRES_URL", "POSTGRES_PRISMA_URL", "POSTGRES_URL_NON_POOLING"]) {

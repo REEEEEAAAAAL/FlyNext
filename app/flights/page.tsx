@@ -3,7 +3,7 @@
 import { loginUrl } from "@/app/lib/return-path";
 
 import { acknowledgeBooking, bookingRequest } from "@/app/lib/booking-request";
-import { getAccessToken, sessionFetch } from "@/app/lib/session";
+import { getAccessToken, sessionFetch, recoverSession } from "@/app/lib/session";
 
 import LocationCombobox from "@/app/components/LocationCombobox";
 import BookingSteps from "@/app/components/BookingSteps";
@@ -224,6 +224,10 @@ export default function FlightSearchPage() {
     // Flight results for outbound and return.
     const [outboundFlightGroups, setOutboundFlightGroups] = useState<FlightGroup[]>([]);
     const [returnFlightGroups, setReturnFlightGroups] = useState<FlightGroup[]>([]);
+    const [activeDirection, setActiveDirection] = useState<"outbound" | "return">("outbound");
+    const [searchDetails, setSearchDetails] = useState({ origin: "", destination: "", date: "", returnDate: "" });
+    const resultsRef = useRef<HTMLDivElement>(null);
+    const toolbarRef = useRef<HTMLDivElement>(null);
 
     const [loading, setLoading] = useState(false);
     const [searched, setSearched] = useState(false);
@@ -297,13 +301,7 @@ export default function FlightSearchPage() {
     const outboundSelection = selectedFlights(selectedOutboundGroupId);
     const returnSelection = selectedFlights(selectedReturnGroupId);
 
-    /**
-     * What the floating bar offers to buy, and whether it can.
-     *
-     * `null` when there is nothing to book yet. The selections are the source of
-     * truth: the bar renders the price of exactly these legs, so it cannot offer a
-     * total the booking would not charge.
-     */
+    // Derive the booking total and readiness from the selected legs.
     const roundTripSelection = (() => {
         if (tripType !== "round-trip") {
             return null;
@@ -345,7 +343,7 @@ export default function FlightSearchPage() {
 
     // Redirect to login if not logged in.
     const ensureLoggedIn = async (): Promise<boolean> => {
-        const token = getAccessToken();
+        const token = await recoverSession();
         if (!token) {
             router.push(signInForSelection());
             return false;
@@ -429,6 +427,7 @@ export default function FlightSearchPage() {
         setReturnFlightGroups([]);
         setSelectedOutboundGroupId(null);
         setSelectedReturnGroupId(null);
+        setActiveDirection("outbound");
 
         try {
             const isRoundTrip = tripType === "round-trip" && returnDate.length > 0;
@@ -461,6 +460,7 @@ export default function FlightSearchPage() {
 
             if (version !== searchVersion.current || controller.signal.aborted) return;
             setSearched(true);
+            setSearchDetails({ origin, destination, date, returnDate });
             setOutboundFlightGroups(outbound);
             if (isRoundTrip) {
                 setReturnFlightGroups(inbound);
@@ -606,22 +606,70 @@ export default function FlightSearchPage() {
         <div className="flight-segment">
             <div className="segment-airline"><span className="airline-mark" aria-hidden="true">↗</span><div><strong>{flight.airline?.name ?? "Airline"}</strong><span>{flight.flightNumber ?? "Flight details"}</span></div></div>
             <div className="segment-route">
-                <div><strong>{flight.origin?.code ?? "—"}</strong><span>{flight.origin?.city}</span><time>{flight.departureTime ? new Date(flight.departureTime).toLocaleString("en-US") : "Time unavailable"}</time></div>
+                <div><time className="segment-clock" dateTime={flight.departureTime}>{flight.departureTime ? new Date(flight.departureTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Time unavailable"}</time><strong>{flight.origin?.code ?? "—"}</strong><span>{flight.origin?.city}</span><span>{flight.departureTime ? new Date(flight.departureTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}</span></div>
                 <div className="segment-duration"><span>{flight.durationMinutes != null ? formatDuration(flight.durationMinutes) : "—"}</span><span className="segment-line" aria-hidden="true" /></div>
-                <div><strong>{flight.destination?.code ?? "—"}</strong><span>{flight.destination?.city}</span><time>{flight.arrivalTime ? new Date(flight.arrivalTime).toLocaleString("en-US") : "Time unavailable"}</time></div>
+                <div><time className="segment-clock" dateTime={flight.arrivalTime}>{flight.arrivalTime ? new Date(flight.arrivalTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Time unavailable"}</time><strong>{flight.destination?.code ?? "—"}</strong><span>{flight.destination?.city}</span><span>{flight.arrivalTime ? new Date(flight.arrivalTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}</span></div>
             </div>
             <div className="segment-meta"><span>{flight.availableSeats ?? "Unknown"} seats available</span><span>${flight.price.toFixed(2)} USD / segment</span></div>
         </div>
     );
 
+    const showDirection = (direction: "outbound" | "return") => {
+        setActiveDirection(direction);
+        if (resultsRef.current) {
+            const top = resultsRef.current.getBoundingClientRect().top + window.scrollY;
+            window.scrollTo({ top: Math.max(0, top - (toolbarRef.current?.offsetHeight ?? 0) - 24) });
+        }
+    };
+
+    const renderResults = (direction: "outbound" | "return") => {
+        const outbound = direction === "outbound";
+        const groups = outbound ? outboundFlightGroups : returnFlightGroups;
+        const selectedId = outbound ? selectedOutboundGroupId : selectedReturnGroupId;
+        const selected = outbound ? outboundSelection : returnSelection;
+        const title = outbound ? "Outbound Flights" : "Return Flights";
+        const departureDay = outbound ? searchDetails.date : searchDetails.returnDate;
+        return (
+            <section id={direction + "-results"} className="flight-results-panel" data-active={activeDirection === direction} aria-labelledby={direction + "-heading"}>
+                <header className="flight-results-heading">
+                    <div className="flight-results-title">
+                        <h2 id={direction + "-heading"} className="heading text-2xl font-semibold">{title}</h2>
+                        <span className="muted text-sm">{groups.length} option{groups.length === 1 ? "" : "s"}</span>
+                    </div>
+                    <p className="flight-results-route">{outbound ? searchDetails.origin : searchDetails.destination} → {outbound ? searchDetails.destination : searchDetails.origin}</p>
+                    <time className="muted text-sm" dateTime={departureDay}>{departureDay ? new Date(departureDay + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : ""}</time>
+                    {tripType === "round-trip" && <p className="flight-selection-summary">{selected.length ? "Selected: " + selected.map(flight => flight.flightNumber ?? flight.id).join(" + ") + " · $" + selected.reduce((sum, flight) => sum + flight.price, 0).toFixed(2) + " USD" : "Choose your " + direction + " flight below."}</p>}
+                </header>
+                {groups.length ? <ul className="flight-results-list" aria-label={title + " options"} tabIndex={0}>
+                    {groups.map((group) => {
+                        const groupId = generateGroupId(group.flights);
+                        const isSelected = tripType === "round-trip" && selectedId === groupId;
+                        return <li key={groupId} className={"flight-result-card surface" + (isSelected ? " is-selected" : "")}>
+                            <div className="flight-result-overview">
+                                <div><p className="font-semibold heading">{stopsLabel(group.legs)}</p><p className="muted text-sm">Flying time: {group.totalDuration != null ? formatDuration(group.totalDuration) : "N/A"}</p></div>
+                                <p className="flight-result-price">{group.totalPrice != null ? "$" + group.totalPrice.toFixed(2) : "N/A"}<span>USD / traveller</span></p>
+                            </div>
+                            {group.flights.map((flight, flightIndex) => <div key={flight.id ?? flightIndex}>
+                                {flightIndex > 0 && <p className="my-4 text-center text-sm muted">{layoverLabel(group.flights[flightIndex - 1], flight)}</p>}
+                                {renderFlightDetails(flight)}
+                            </div>)}
+                            {tripType === "one-way" ? <button type="button" onClick={() => handleBookOneWay(group.flights)} disabled={booking} className="button-primary mt-4">{booking ? "Booking…" : "Book One‑Way"}</button> : <button
+                                type="button"
+                                className={"flight-select-button" + (isSelected ? " is-selected" : "")}
+                                aria-pressed={isSelected}
+                                aria-label={(isSelected ? "Selected" : "Select flight") + ": " + direction + " " + group.flights.map(flight => flight.flightNumber ?? flight.id).join(", ")}
+                                disabled={booking || loading}
+                                onClick={() => outbound ? setSelectedOutboundGroupId(groupId) : setSelectedReturnGroupId(groupId)}
+                            >{isSelected && <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true"><path d="m5 12 4 4L19 6" /></svg>}{isSelected ? "Selected" : "Select flight"}</button>}
+                        </li>;
+                    })}
+                </ul> : <p role="status" className="surface p-6 muted">No {direction} flights found. Try different airports or a different {outbound ? "departure" : "return"} date.</p>}
+            </section>
+        );
+    };
+
     return (
-        /*
-         * The extra bottom padding is room for the floating round-trip bar, which
-         * is fixed to the viewport: without it the bar would cover the last result
-         * card, and the only way to read that card would be to close the bar by
-         * changing the selection.
-         */
-        <div className={`flight-search-page max-w-4xl mx-auto p-8 card ${roundTripSelection?.flights.length ? "has-selection" : ""}`}>
+        <div className="flight-search-page page-shell card">
             <BookingSteps current="reserve" />
             <h1 className="text-3xl font-bold mb-6 heading">Find your next flight</h1>
             <p className="search-intro">Compare routes, connections and fares. All times follow your device time zone ({Intl.DateTimeFormat().resolvedOptions().timeZone}). Prices are in USD.</p>
@@ -691,13 +739,7 @@ export default function FlightSearchPage() {
 
             {loading && <p role="status" className="muted">Loading flights...</p>}
             {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
-            {/*
-              * Both outcomes are also raised as toasts at the moment they happen,
-              * which is what a traveller actually notices. These inline copies stay
-              * because the booking control sits far down a long results list: after
-              * pressing it, the confirmation is still on screen next to the button
-              * they pressed rather than only at the top of the viewport.
-              */}
+            {/* Keep booking outcomes available after their toasts close. */}
             {bookingMessage && (
                 <p
                     role="status"
@@ -712,211 +754,61 @@ export default function FlightSearchPage() {
                 </p>
             )}
 
-            {searched && !loading && !error && outboundFlightGroups.length === 0 && <div role="status" className="surface p-6 muted">No outbound flights found. Try different airports or a different departure date.</div>}
-            {/* Outbound Flight Results */}
-            {outboundFlightGroups.length > 0 && (
-                <div className="mb-6">
-                    <h2 className="text-2xl font-semibold mb-4 heading">Outbound Flights</h2>
-                    <ul className="space-y-6">
-                        {outboundFlightGroups.map((group, groupIndex) => (
-                            <li key={groupIndex} className="p-6 surface">
-                                <div className="mb-4">
-                                    <p className="text-lg font-semibold text-gray-900 dark:text-zinc-100">
-                                        {stopsLabel(group.legs)}
-                                    </p>
-                                    <p className="text-gray-800 dark:text-zinc-200">
-                                        <strong>Total Price:</strong> ${group.totalPrice?.toFixed(2) || "N/A"}
-                                    </p>
-                                    <p className="text-gray-800 dark:text-zinc-200">
-                                        <strong>Flying time:</strong>{" "}
-                                        {group.totalDuration != null ? formatDuration(group.totalDuration) : "N/A"}
-                                    </p>
-                                </div>
-                                {group.flights.map((flight, flightIndex) => (
-                                    <div key={flight.id ?? flightIndex}>
-                                        {flightIndex > 0 && (
-                                            <div className="my-4 text-center text-sm text-gray-500 dark:text-zinc-400">
-                                                {layoverLabel(group.flights[flightIndex - 1], flight)}
-                                            </div>
-                                        )}
-                                        {renderFlightDetails(flight)}
-                                    </div>
-                                ))}
-                                {tripType === "one-way" && (
-                                    <button
-                                        onClick={() => handleBookOneWay(group.flights)}
-                                        disabled={booking}
-                                        className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-60 dark:bg-blue-600 dark:hover:bg-blue-500"
-                                    >
-                                        {booking ? "Booking…" : "Book One‑Way"}
-                                    </button>
-                                )}
-                                {tripType === "round-trip" && (
-                                    <div className="mt-4">
-                                        {/*
-                                         * A radio, not a check-box: exactly one
-                                         * outbound is part of the ticket. The name
-                                         * groups the whole result list, so picking
-                                         * a second outbound replaces the first —
-                                         * which is the only way the page can be
-                                         * read as "choose your outbound".
-                                         */}
-                                        <label className="inline-flex items-center cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="selectedOutbound"
-                                                checked={selectedOutboundGroupId === generateGroupId(group.flights)}
-                                                onChange={() => setSelectedOutboundGroupId(generateGroupId(group.flights))}
-                                                className="form-radio text-blue-600 dark:bg-zinc-800 dark:border-white/20"
-                                            />
-                                            <span className="ml-2 text-gray-800 dark:text-zinc-200">Select as Outbound</span>
-                                        </label>
-                                    </div>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
+            {searched && !loading && !error && <>
+                {tripType === "round-trip" && <div ref={toolbarRef} className="flight-results-toolbar">
+                    {roundTripSelection && roundTripSelection.flights.length > 0 ? <RoundTripBar
+                        selection={roundTripSelection}
+                        outboundLegs={outboundSelection.length}
+                        booking={booking}
+                        error={bookingError}
+                        onBook={handleBookRoundTrip}
+                    /> : <p className="muted text-sm">Select one outbound and one return flight to build your round trip.</p>}
+                    <div className="flight-direction-switch" role="group" aria-label="Flight direction">
+                        {(["outbound", "return"] as const).map(direction => {
+                            const selected = direction === "outbound" ? outboundSelection : returnSelection;
+                            return <button key={direction} type="button" aria-pressed={activeDirection === direction} aria-controls={direction + "-results"} onClick={() => showDirection(direction)}>
+                                <span>{direction === "outbound" ? "Outbound" : "Return"}</span><span>{selected.length ? "Selected · $" + selected.reduce((sum, flight) => sum + flight.price, 0).toFixed(2) : "Choose a flight"}</span>
+                            </button>;
+                        })}
+                    </div>
+                </div>}
+                <div ref={resultsRef} className={"flight-results-grid" + (tripType === "round-trip" ? " is-round-trip" : "")}>
+                    {renderResults("outbound")}
+                    {tripType === "round-trip" && renderResults("return")}
                 </div>
-            )}
+            </>}
 
-            {/* Return Flight Results for Round Trip */}
-            {tripType === "round-trip" && searched && !loading && !error && (
-                <div className="mb-6">
-                    <h2 className="text-2xl font-semibold mb-4 heading">Return Flights</h2>
-                    {returnFlightGroups.length > 0 ? (
-                        <ul className="space-y-6">
-                            {returnFlightGroups.map((group, groupIndex) => (
-                                <li key={groupIndex} className="p-6 surface">
-                                    <div className="mb-4">
-                                        <p className="text-lg font-semibold text-gray-900 dark:text-zinc-100">
-                                            {group.legs === 1 ? "Direct Flight" : `${group.legs - 1} Stop${group.legs > 2 ? "s" : ""}`}
-                                        </p>
-                                        <p className="text-gray-800 dark:text-zinc-200">
-                                            <strong>Total Price:</strong> ${group.totalPrice?.toFixed(2) || "N/A"}
-                                        </p>
-                                        <p className="text-gray-800 dark:text-zinc-200">
-                                            <strong>Flying time:</strong>{" "}
-                                            {group.totalDuration != null ? formatDuration(group.totalDuration) : "N/A"}
-                                        </p>
-                                    </div>
-                                    {group.flights.map((flight, flightIndex) => (
-                                        <div key={flight.id ?? flightIndex}>
-                                            {flightIndex > 0 && (
-                                                <div className="my-4 text-center text-sm text-gray-500 dark:text-zinc-400">
-                                                    {layoverLabel(group.flights[flightIndex - 1], flight)}
-                                                </div>
-                                            )}
-                                            {renderFlightDetails(flight)}
-                                        </div>
-                                    ))}
-                                    <div className="mt-4">
-                                        <label className="inline-flex items-center cursor-pointer">
-                                            <input
-                                                type="radio"
-                                                name="selectedReturn"
-                                                checked={selectedReturnGroupId === generateGroupId(group.flights)}
-                                                onChange={() => setSelectedReturnGroupId(generateGroupId(group.flights))}
-                                                className="form-radio text-blue-600 dark:bg-zinc-800 dark:border-white/20"
-                                            />
-                                            <span className="ml-2 text-gray-800 dark:text-zinc-200">Select as Return</span>
-                                        </label>
-                                    </div>
-                                </li>
-                            ))}
-                        </ul>
-                    ) : (
-                        <p className="muted">No return flights found.</p>
-                    )}
-                </div>
-            )}
-
-            {roundTripSelection !== null && roundTripSelection.flights.length > 0 && (
-                <RoundTripBar
-                    selection={roundTripSelection}
-                    outboundLegs={outboundSelection.length}
-                    booking={booking}
-                    /*
-                     * The failure is repeated in the bar because the page-level
-                     * message is at the top of the form, and the traveller who just
-                     * pressed this button is at the bottom of a long results list —
-                     * they would click again rather than scroll up to find out why.
-                     */
-                    error={bookingError}
-                    onBook={handleBookRoundTrip}
-                />
-            )}
         </div>
     );
 }
 
-/** What the floating round-trip bar needs to render. */
 interface RoundTripBarProps {
-    selection: {
-        flights: Flight[];
-        total: number;
-        ready: boolean;
-        note: string;
-    };
+    selection: { flights: Flight[]; total: number; ready: boolean; note: string; };
     outboundLegs: number;
     booking: boolean;
-    /** The last booking failure, repeated beside the button that caused it. */
     error: string;
     onBook: () => void;
 }
 
-/**
- * The round-trip booking control, pinned to the bottom-right of the viewport.
- *
- * It carries the running total and the state of both halves, so the choice and
- * the button that commits it stay together: a traveller choosing an outbound near
- * the top of a long list can spend the selection without scrolling the whole page,
- * and the selection they are building cannot scroll out of sight while they do.
- *
- * `fixed` rather than `sticky`: a sticky element would still be pushed off screen
- * by the next result in the list. The page reserves room for it (see the
- * container's bottom padding) so it cannot cover the last card.
- */
 function RoundTripBar({ selection, outboundLegs, booking, error, onBook }: RoundTripBarProps) {
-    const legs = selection.flights.length;
-    return (
-        <div
-            className="round-trip-bar fixed bottom-4 right-4 z-40 w-[min(22rem,calc(100vw-2rem))] rounded-lg border border-gray-300 bg-white p-4 shadow-xl dark:border-white/15 dark:bg-zinc-900"
-            role="region"
-            aria-label="Round trip selection"
-        >
-            <details open>
-            <summary className="text-sm font-semibold heading cursor-pointer">
-                Round trip · {legs} flight{legs === 1 ? "" : "s"}
-                <span className="text-xs font-normal muted"> (show / hide)</span>
-            </summary>
-            <div className="mt-1 flex items-baseline justify-between">
-                <span className="muted text-sm">Total</span>
-                <span className="text-xl font-bold text-gray-900 dark:text-zinc-100">
-                    ${selection.total.toFixed(2)}
-                </span>
-            </div>
-            <p className="text-xs muted mt-2">Outbound: {outboundLegs ? `${selection.flights[0]?.origin?.code} → ${selection.flights[outboundLegs - 1]?.destination?.code}` : "Choose a flight"}<br />Return: {legs > outboundLegs ? `${selection.flights[outboundLegs]?.origin?.code} → ${selection.flights[legs - 1]?.destination?.code}` : "Choose a flight"} · USD</p>
-            {selection.note ? (
-                <p className="mt-2 text-sm text-amber-700 dark:text-amber-400">
-                    {selection.note}
-                </p>
-            ) : (
-                <p className="mt-2 text-sm text-green-700 dark:text-emerald-400">
-                    Outbound and return selected.
-                </p>
-            )}
-            {error && (
-                <p className="mt-2 text-sm text-red-600 dark:text-red-400">{error}</p>
-            )}
-            <button
-                onClick={onBook}
-                disabled={booking || !selection.ready}
-                className="mt-3 w-full px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-500"
-            >
-                {booking ? "Booking…" : "Book Round Trip"}
-            </button>
-            </details>
-        </div>
-    );
+    const directions = [
+        { title: "Outbound", flights: selection.flights.slice(0, outboundLegs) },
+        { title: "Return", flights: selection.flights.slice(outboundLegs) },
+    ];
+    return <div className="round-trip-bar" role="region" aria-label="Round trip selection">
+        <div className="round-trip-total"><span className="text-sm font-semibold heading">Your round trip</span><strong className="heading">$<span>{selection.total.toFixed(2)}</span> <span className="text-xs muted">USD</span></strong></div>
+        <button type="button" onClick={onBook} disabled={booking || !selection.ready} className="button-primary round-trip-book">{booking ? "Booking…" : "Book Round Trip"}</button>
+        <p className="round-trip-note text-xs muted" role="status">{selection.note || "Outbound and return selected."}</p>
+        <details className="round-trip-details">
+            <summary>View selected flights</summary>
+            <div>{directions.map(({ title, flights }) => <div key={title}>
+                <strong className="heading">{title}</strong>
+                {flights.length ? <>
+                    <p>{flights[0]?.origin?.code} → {flights[flights.length - 1]?.destination?.code} · {flights.map(flight => flight.flightNumber ?? flight.id).join(" + ")}</p>
+                    <p>{flights[0]?.departureTime ? new Date(flights[0].departureTime).toLocaleString("en-US") : "Time unavailable"} · ${flights.reduce((sum, flight) => sum + flight.price, 0).toFixed(2)} USD</p>
+                </> : <p>Choose a flight</p>}
+            </div>)}</div>
+        </details>
+        {error && <p className="round-trip-error text-sm text-red-600 dark:text-red-400">{error}</p>}
+    </div>;
 }
-

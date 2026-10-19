@@ -622,7 +622,7 @@ export default function EditRoomTypePage() {
     }
 
     return (
-        <div className="max-w-3xl mx-auto p-8 card text-black dark:text-zinc-100 relative">
+        <div className="page-shell page-shell--form card text-black dark:text-zinc-100 relative">
 
 
             <HostNavigation hotelHref={`/hotels/${hotelId}/edit`} />

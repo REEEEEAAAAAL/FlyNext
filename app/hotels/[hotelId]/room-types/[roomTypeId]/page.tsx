@@ -49,7 +49,7 @@ export default function RoomTypeDetailsPage() {
   }, [hotelId, roomTypeId]);
 
   return (
-    <div className="card max-w-4xl mx-auto p-8 text-black dark:text-zinc-100">
+    <div className="card page-shell text-black dark:text-zinc-100">
       {loading && <p role="status" className="muted">Loading room type details...</p>}
       {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
       {roomType && (

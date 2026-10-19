@@ -153,7 +153,7 @@ export default function ItineraryListPage() {
     };
 
     return (
-        <div className="max-w-6xl mx-auto p-8 card text-black dark:text-zinc-100">
+        <div className="page-shell card text-black dark:text-zinc-100">
             <h1 className="text-3xl font-bold mb-6 heading">
                 Your trips, in one place
             </h1>

@@ -119,7 +119,7 @@ function InvoicePageContent() {
     }, [itineraryId, router]);
 
     return (
-        <div className="max-w-4xl mx-auto p-8 card text-[var(--text)]">
+        <div className="page-shell page-shell--form card text-[var(--text)]">
             <h1 className="text-3xl font-bold mb-6 heading">Invoice</h1>
             {loading && <p role="status" className="muted">Generating invoice...</p>}
             {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
@@ -148,7 +148,7 @@ export default function InvoicePage() {
     return (
         <Suspense
             fallback={
-                <div className="max-w-4xl mx-auto p-8 card muted">
+                <div className="page-shell page-shell--form card muted">
                     Loading invoice...
                 </div>
             }

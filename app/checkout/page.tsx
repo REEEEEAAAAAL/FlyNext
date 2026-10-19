@@ -257,7 +257,7 @@ function CheckoutPageContent() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-8 card text-[var(--text)]">
+    <div className="page-shell page-shell--form card text-[var(--text)]">
       <BookingSteps current="confirm" />
       <h1 className="text-3xl font-bold mb-6 heading">Review your trip</h1>
 

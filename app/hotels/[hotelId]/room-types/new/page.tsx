@@ -183,7 +183,7 @@ export default function CreateRoomTypePage() {
     };
 
     return (
-        <div className="max-w-3xl mx-auto p-8 card text-black dark:text-zinc-100">
+        <div className="page-shell page-shell--form card text-black dark:text-zinc-100">
             <HostNavigation hotelHref={`/hotels/${hotelId}/edit`} />
             <h1 className="text-3xl font-bold mb-6 heading">
                 Create New Room Type

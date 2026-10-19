@@ -198,7 +198,7 @@ export default function CreateHotelPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-8 card text-black dark:text-zinc-100">
+    <div className="page-shell page-shell--form card text-black dark:text-zinc-100">
       <HostNavigation />
       <h1 className="text-3xl font-bold mb-6 heading text-center">
         Add a New Hotel
@@ -220,7 +220,6 @@ export default function CreateHotelPage() {
                * the file the user just picked, and those are not addressable from
                * the image optimizer, so `next/image` would render an empty box.
                */
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={logoPreview}
                 alt="Hotel Logo Preview"

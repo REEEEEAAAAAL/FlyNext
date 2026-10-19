@@ -206,7 +206,7 @@ export default function UserFlightBookingsPage() {
     }, [router, showError]);
 
     return (
-        <div className="card max-w-6xl mx-auto p-8 text-black dark:text-zinc-100">
+        <div className="card page-shell text-black dark:text-zinc-100">
             <h1 className="text-3xl font-bold mb-6 heading">
                 Your Flight Bookings
             </h1>

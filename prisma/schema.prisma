@@ -205,6 +205,7 @@ model AfsOfflineBooking {
   // A cancellation looks the row up by id, and the seat count subtracts the live
   // bookings that contain a flight.
   @@index([status])
+  @@index([flightIds(ops: JsonbPathOps)], type: Gin, map: "AfsOfflineBooking_flightIds_idx")
 }
 
 model City {

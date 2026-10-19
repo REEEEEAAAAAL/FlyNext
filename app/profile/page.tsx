@@ -279,8 +279,8 @@ export default function ProfilePage() {
     }
 
     return (
-        <div className="min-h-screen bg-[var(--background)] py-12 px-4 sm:px-6 lg:px-8 text-[var(--text)]">
-            <div className="max-w-md mx-auto card rounded-xl overflow-hidden md:max-w-2xl">
+        <div className="min-h-screen bg-[var(--background)] py-12 text-[var(--text)]">
+            <div className="page-shell page-shell--form profile-card card rounded-xl overflow-hidden">
                 <div className="md:flex">
                     <div className="p-8 w-full">
                         <div className="flex justify-between items-center mb-6">

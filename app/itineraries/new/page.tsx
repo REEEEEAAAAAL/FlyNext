@@ -273,7 +273,7 @@ export default function CreateItineraryPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-8 card text-[var(--text)]">
+    <div className="page-shell page-shell--form card text-[var(--text)]">
       <BookingSteps current="plan" />
       <h1 className="text-3xl font-bold mb-6 heading">Bring your trip together</h1>
       <p className="search-intro">Choose one flight reservation, one hotel reservation, or both. You can review the total before confirming with DEMO payment.</p>

@@ -441,15 +441,15 @@ export default function ItineraryDetailsPage() {
         }
     };
 
-    if (loading) return <div className="max-w-4xl mx-auto p-8">Loading...</div>;
+    if (loading) return <div className="page-shell">Loading...</div>;
     if (error)
         return (
-            <div className="max-w-4xl mx-auto p-8 text-red-600 dark:text-red-400">
+            <div className="page-shell text-red-600 dark:text-red-400">
                 {error}
             </div>
         );
     if (!itinerary)
-        return <div className="max-w-4xl mx-auto p-8">Itinerary not found</div>;
+        return <div className="page-shell">Itinerary not found</div>;
 
     /*
      * Where the booked flight changes planes, per direction. Both columns carry
@@ -460,7 +460,7 @@ export default function ItineraryDetailsPage() {
     const returnStops = transferAirports(itinerary.flight?.departure.returnLegs);
 
     return (
-        <div className="max-w-4xl mx-auto p-8 card text-black dark:text-zinc-100">
+        <div className="page-shell card text-black dark:text-zinc-100">
             <div className="mb-6">
                 <Link
                     href="/itineraries"

@@ -1,43 +1,75 @@
-# FlyNext engineering context
+# FlyNext 工程规范
 
-## Start here
+FlyNext 是基于 Next.js 的旅行预订作品集应用。用户界面为英语，支持浅色和深色主题。
 
-- Read `docs/PROGRESS.md`, then the current stage in `docs/IMPROVEMENT_PLAN.md`.
-- Reuse the recorded audit. Expand inspection only when relevant code changed or evidence is stale.
-- Work on `codex/improvements`. Stage 2 began at `2b41cea9735c96c600ef0983f550ff309b28d6a3` with a clean worktree and index.
-- Preserve all pre-existing changes. Do not reset, clean, force checkout, auto-commit, push, merge, or publish without authorization.
-- Implement only the authorized stage. At its end update both documents, review the diff, report checks and a suggested commit message, then stop.
+## 技术栈
 
-## Product and architecture
+- Next.js 15 App Router、React 19、TypeScript 5 strict、Tailwind CSS 4。
+- PostgreSQL 与 Prisma 6.3.1。
+- Vitest 用于单元和集成测试，Playwright 用于浏览器端到端测试。
+- 依赖版本以锁文件为准；未经明确要求，不升级或替换依赖。
 
-- Public portfolio travel demo; normal registration/login, English UI, light/dark themes, simulated payment. No real financial transaction is implemented.
-- Next.js 15 App Router, React 19, strict TypeScript 5, Tailwind CSS 4, PostgreSQL and Prisma 6.
-- `app/`: pages, client components/context/helpers; `app/api/`: typed Route Handlers.
-- `lib/api/`: authentication, validation, error boundary, limits, uploads; `lib/reservations.ts`: shared booking lifecycle.
-- `lib/afs/`: built-in flight provider and persistent ledger; `lib/afs-client.ts`: remote/built-in contract boundary.
-- `types/`: transport/domain types; `prisma/`: schema, migrations, reference seed and destructive demo fixture.
-- Cloudinary stores images; pdf-lib generates receipts; Chart.js renders owner charts.
-- Preserve existing business scope: bookings precede itinerary assembly; an itinerary links at most one flight reservation and one hotel reservation; a user becomes a hotel owner by creating a hotel.
+## 目录约定
 
-## Commands
+- `app/`：页面、共享组件、布局和错误边界。
+- `app/api/`：HTTP Route Handlers。
+- `lib/api/`：请求校验、鉴权、授权、限流、幂等和错误处理。
+- `lib/reservations.ts`：预订生命周期和跨领域协调。
+- `lib/afs/`：内置航班供应商及其预订账本。
+- `prisma/`：数据模型、迁移和种子数据。
+- `types/`：共享 TypeScript 契约。
+- `tests/`、`e2e/`：单元/集成测试和浏览器工作流。
+- `scripts/`：开发、验证和维护命令。
+- `docs/`：公开开发/部署说明及合成数据截图。
+- `docs/internal/` 是可选的本机上下文；公开开发、构建和测试不得依赖该目录。
 
-- `npm ci`: restore locked dependencies (runs Prisma generation; never applies migrations).
-- `npm run dev`, `npm run build`, `npm start`: development, production build and production server.
-- `npm run typecheck`: application and test types; `npm run build:server`: compile framework-independent server/seed code to ignored `dist/`.
-- `npm test` / `npm run test:unit`: database-free tests only.
-- `npm run test:integration`: destructive integration suite; prefers the enrolled Neon test target in `.env.test` described in `docs/DEVELOPMENT.md`.
-- `npm run prisma:generate`: generate client only. `npm run prisma:migrate`: writes schema; inspect target and obtain authorization for that environment first.
-- `npm run seed` and `seed:prod`: destructive reset fixture, local disposable `_test`/`_demo` database only, with explicit opt-in. The `:prod` name refers to compiled output, NOT production safety.
-- `npm run seed:reference`: additive reference data, still a database write; never run against existing remote data as part of routine validation.
+## 常用命令
 
-## Safety and conventions
+- `npm ci`：按锁文件安装依赖并生成 Prisma Client，不应用迁移。
+- `npm run dev`：启动本地开发服务器。
+- `npm run typecheck`：检查应用和测试 TypeScript 类型。
+- `npm run lint`：运行 ESLint。
+- `npm test`：运行数据库无关单元测试。
+- `npm run build:server`：编译独立服务端 TypeScript。
+- `npm run build`：生成 Next.js 生产构建。
+- `npm run test:db:verify`、`npm run test:integration`、`npm run test:e2e`：核验数据库目标后，按顺序运行集成和浏览器测试。
+- `npm run prisma:migrate` 和 `npm run seed:reference` 会写入数据库，运行前确认目标。
+- `npm run seed` 与 `npm run seed:prod` 是清理型演示种子，不得用于保留真实数据的数据库。
 
-- Never print or commit `.env` contents, connection credentials, tokens, API keys, booking backups or database files.
-- Business and unknown remote databases must never be migrated, truncated, reset or seeded. The explicitly enrolled Neon `flynext_test` target alone may receive guarded integration migrations, synthetic fixtures and TRUNCATE. A `_test` suffix or env flag alone does not establish isolation.
-- Integration prefers existing `.env.test` without overwriting DATABASE_URL; `.env.test.local` is selected only with FLYNEXT_TEST_ENV=local. Reject deployment context before Vitest starts. Before connecting, require exact remote enrollment/TLS/business-target exclusion or the dedicated loopback config; before writes, verify the actual database marker/OID/role. Docker is optional.
-- Keep pure tests independent of env-file loading, Prisma connections, migrations and Cloudinary calls.
-- Route errors use `withRoute`/`ApiError`; preserve established response envelopes and JSON numeric values. Do not suppress type/build errors or remove working features to pass checks.
-- Use migrations for intentional schema changes. The user authorized all of stage 5 on 2026-10-18; stop at its completion. Stage 6 remains outside scope. Never migrate a business deployment without separate authorization.
-- Use the enrolled Neon test database and existing identity guards. Docker Desktop is unavailable: retain Docker configuration and Deferred image build/run acceptance; do not run Docker commands or troubleshoot/replace the test environment unless the user explicitly requests it.
-- UI stages require actual desktop/mobile interaction and screenshots when possible. Clearly record unverified visual checks.
-- Update progress with actual commands/results, blockers, migration impact and next entry point. Stages 2–5 are complete. Public room responses must never contain guest reservations; keep the current-owner reservations endpoint and privacy/session regressions. Stage 5 is complete; stop here. Stage 6 requires new authorization.
+## 实现约定
+
+- 保持严格类型；优先复用现有模块、领域类型和响应契约。
+- 不用 `any`、类型断言或关闭检查来掩盖不确定类型。
+- Route Handlers 使用 `withRoute` 和 `ApiError`。
+- 延续现有 HTTP 状态码、响应包装和 JSON 数值类型。
+- 在服务端执行鉴权和资源所有权检查，不能只依赖界面隐藏控件。
+- 校验外部输入后再执行数据库写入、上传或供应商调用。
+- 不向客户端返回数据库异常、连接信息或内部诊断。
+- 保留现有错误处理、限流和幂等边界，不为简化实现移除保护。
+- 组件与领域逻辑尽量沿用当前目录和职责，不引入重复实现。
+- 注释应简洁、专业、自然；不要在注释中使用 Markdown、表情或装饰字符。
+
+## 安全与测试
+
+- 不提交或输出环境文件、真实凭据、完整连接串、令牌、备份或个人数据。
+- 示例配置只能使用无效占位值；不要复制本地环境文件作为示例。
+- 单元测试不得隐式读取本地环境文件或连接数据库。
+- 集成和 E2E 测试只能使用专用、隔离且经安全运行器核验的测试数据库。
+- 不绕过数据库安全运行器，不对开发或生产数据运行测试夹具。
+- 测试会写入、迁移或清理数据库时，先确认目标及操作影响。
+- 审阅 Prisma 迁移；迁移只对明确授权的目标执行。
+- 构建步骤不得隐式迁移、重置数据库或填充种子数据。
+
+## 核心业务约束
+
+- 酒店入住和退房使用 UTC 日历日期；保持旧数据兼容及库存并发保护。
+- 预订写入保留事务和幂等键；取消恢复库存应保持一致且不可重复扣加。
+- 公开酒店和房型响应不得包含客人预订记录。
+- 房主数据必须校验当前用户身份及资源所有权。
+- 一个行程最多包含一个航班预订和一个酒店预订。
+- DEMO 结账不处理真实资金，不收集真实银行卡或护照信息。
+
+## 文档与交付
+
+按需阅读 `docs/DEVELOPMENT.md` 或 `docs/DEPLOYMENT.md` 的相关部分，不需通读所有文档。
+公开说明应简洁、可复现，不加入内部交接、私人端点或生产运维记录。

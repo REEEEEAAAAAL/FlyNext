@@ -362,21 +362,21 @@ export default function FlightBookingDetailsPage() {
         }
     };
 
-    if (loading) return <div className="max-w-4xl mx-auto p-8">Loading...</div>;
+    if (loading) return <div className="page-shell">Loading...</div>;
     if (error)
         return (
-            <div className="max-w-4xl mx-auto p-8 text-red-600 dark:text-red-400">
+            <div className="page-shell text-red-600 dark:text-red-400">
                 {error}
             </div>
         );
     if (!booking)
-        return <div className="max-w-4xl mx-auto p-8">Booking not found</div>;
+        return <div className="page-shell">Booking not found</div>;
 
     const directions = flightDirections(booking.departure, booking.arrival);
     const reference = bookingReference(booking.afsBookingId);
 
     return (
-        <div className="card max-w-4xl mx-auto p-8 text-black dark:text-zinc-100">
+        <div className="card page-shell text-black dark:text-zinc-100">
             <div className="mb-6">
                 <Link
                     href="/user/flight-bookings"

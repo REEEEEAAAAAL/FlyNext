@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { sessionFetch, getAccessToken } from "@/app/lib/session";
+import { sessionFetch, recoverSession } from "@/app/lib/session";
 import { bookingRequest, acknowledgeBooking } from "@/app/lib/booking-request";
 import { loginUrl } from "@/app/lib/return-path";
 import { stayNights } from "@/app/lib/booking-display";
@@ -22,8 +22,9 @@ export default function HotelStayPicker({ hotelId, rooms, roomDetail = false }: 
  const [booking, setBooking] = useState(false);
  const [reservation, setReservation] = useState<{id:number;checkIn:string;checkOut:string} | null>(null);
  const version = useRef(0);
+ const bookingInFlight = useRef(false);
  const ids = rooms.map(room => room.id).join(",");
- const load = async (signal?: AbortSignal) => {
+ const load = useCallback(async (signal?: AbortSignal) => {
   const request = ++version.current;
   setLoading(true); setError(""); setSelected("");
   try {
@@ -40,7 +41,7 @@ export default function HotelStayPicker({ hotelId, rooms, roomDetail = false }: 
    if (request === version.current && !signal?.aborted) setError(failure instanceof Error ? failure.message : "Could not load availability.");
   } finally { if (request === version.current && !signal?.aborted) setLoading(false); }
   return false;
- };
+ }, [hotelId, ids]);
  useEffect(() => {
   const query = new URLSearchParams(window.location.search);
   const arrival = query.get("checkIn") ?? ""; const departure = query.get("checkOut") ?? "";
@@ -49,8 +50,8 @@ export default function HotelStayPicker({ hotelId, rooms, roomDetail = false }: 
   void load(controller.signal).then(loaded => {
    if (loaded && !controller.signal.aborted && (stayNights(arrival, departure) ?? 0) > 0) setSelected(`${arrival}/${departure}`);
   });
-  return () => { version.current++; controller.abort(); };
- }, [hotelId, ids]);
+  return () => { controller.abort(); };
+ }, [load]);
  const nights = stayNights(checkIn, checkOut) ?? 0;
  const query = checkIn && checkOut ? `?${new URLSearchParams({checkIn, checkOut})}` : "";
  const available = (roomId: number) => {
@@ -59,11 +60,13 @@ export default function HotelStayPicker({ hotelId, rooms, roomDetail = false }: 
   return rows.length === nights ? Math.min(...rows.map(row => row.availability)) : null;
  };
  const book = async (roomId: number) => {
+  if (bookingInFlight.current) return;
+  bookingInFlight.current = true;
   const returnPath = `${window.location.pathname}${query}`;
-  if (!getAccessToken()) { router.push(loginUrl(returnPath)); return; }
   setBooking(true); setError("");
   const body = {hotelId, roomTypeId: String(roomId), checkIn, checkOut};
   try {
+   if (!await recoverSession()) { router.push(loginUrl(returnPath)); return; }
    const response = await bookingRequest("/api/hotels/book", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body)});
    const data = await response.json();
    if (!response.ok) throw new Error(response.status >= 500 ? "The result is unknown. Retry with the same dates or check My Hotel Bookings." : data.error || "Booking failed.");
@@ -71,7 +74,7 @@ export default function HotelStayPicker({ hotelId, rooms, roomDetail = false }: 
    await acknowledgeBooking("/api/hotels/book", body);
    if (await load()) setSelected(`${body.checkIn}/${body.checkOut}`);
   } catch (failure) { setError(failure instanceof Error ? failure.message : "The result is unknown. Check My Hotel Bookings before starting another booking."); }
-  finally { setBooking(false); }
+  finally { bookingInFlight.current = false; setBooking(false); }
  };
  return <section id="stay-dates" className="mt-8 space-y-4" aria-label="Stay dates and availability">
   <h2 className="text-2xl font-semibold heading">Choose dates & availability</h2>

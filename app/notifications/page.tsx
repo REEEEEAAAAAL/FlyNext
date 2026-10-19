@@ -108,7 +108,7 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="min-h-screen max-w-3xl mx-auto p-8 text-[var(--text)]">
+    <div className="min-h-screen page-shell page-shell--form text-[var(--text)]">
       <h1 className="text-3xl font-bold mb-6 heading">Notifications</h1>
       {loading && <p role="status" className="muted">Loading notifications...</p>}
       {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}

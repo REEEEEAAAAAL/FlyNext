@@ -1,0 +1,42 @@
+name: 隔离数据库与浏览器回归
+on: workflow_dispatch
+permissions:
+  contents: read
+concurrency:
+  group: flynext-dedicated-ci-database
+  cancel-in-progress: false
+jobs:
+  isolated-regression:
+    environment: flynext-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      DATABASE_URL: postgresql://build:build@127.0.0.1:1/build_only
+      JWT_ACCESS_SECRET: build-only-secret-never-used-for-deployment
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: 写入独立 CI 目标登记
+        env:
+          CI_TEST_ENV: ${{ secrets.CI_TEST_ENV }}
+          CI_TEST_APPROVAL: ${{ secrets.CI_TEST_APPROVAL }}
+        run: |
+          node -e 'const fs=require("fs"); for(const [key,file] of [["CI_TEST_ENV",".env.test"],["CI_TEST_APPROVAL",".neon-test-approval.json"]]) {if(!process.env[key]) throw new Error("Missing independently enrolled CI target"); fs.writeFileSync(file,process.env[key],{mode:0o600});}'
+      - run: node node_modules/tsx/dist/cli.mjs scripts/verify-ci-target.ts
+      - run: npm run test:integration
+      - run: npm run build
+      - run: npx playwright install --with-deps chrome
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failures
+          path: |
+            playwright-report/
+            test-results/browser/
+          retention-days: 3

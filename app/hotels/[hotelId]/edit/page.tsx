@@ -320,7 +320,7 @@ export default function EditHotelPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-8 card text-black dark:text-zinc-100 relative">
+    <div className="page-shell page-shell--form card text-black dark:text-zinc-100 relative">
 
 
             <HostNavigation hotelHref={`/hotels/${hotelId}/edit`} />
@@ -339,7 +339,6 @@ export default function EditHotelPage() {
                  * render nothing until the file had been uploaded and served from
                  * `/uploads`.
                  */
-                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={logoPreview}
                   alt="Logo Preview"

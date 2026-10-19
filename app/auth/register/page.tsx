@@ -126,7 +126,7 @@ export default function RegisterPage() {
 
   return (
     <div className="auth-page bg-[var(--background)] py-6">
-      <div className="max-w-md mx-auto p-8 card text-[var(--text)]">
+      <div className="page-shell page-shell--compact card text-[var(--text)]">
         <h1 className="text-2xl font-bold mb-6 heading">A world of possibility</h1>
         <p className="search-intro">Create an account to explore the full FlyNext demo.</p>
         <form onSubmit={handleSubmit}>

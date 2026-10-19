@@ -11,7 +11,7 @@ async function main() {
  const database=decodeURIComponent(url.pathname.slice(1));
  if(option("confirm-database")!==database||database==="flynext_test"||!url.hostname.endsWith(".neon.tech")||url.searchParams.get("sslmode")!=="require") throw new Error("目标确认失败；要求非测试库的 TLS Neon 直连。");
  const command=args.slice(split+1);
- const sql = command[0]==="sql" && ["docs/sql/production-preflight.sql","docs/sql/production-postflight.sql"].includes(command[1]);
+ const sql = command[0]==="sql" && ["docs/internal/sql/production-preflight.sql","docs/internal/sql/production-postflight.sql"].includes(command[1]);
  if(split<0||(!sql&&(command[0]!=="migrate"||!["status","deploy","resolve","diff"].includes(command[1])))) throw new Error("仅允许指定迁移命令或项目只读核验 SQL。");
  const db=new PrismaClient({datasourceUrl:url.href});
  try {

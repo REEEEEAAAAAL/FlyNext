@@ -103,7 +103,7 @@ export default function LoginPage() {
   };
   return (
     <div className="auth-page bg-[var(--background)] py-6">
-      <div className="max-w-md mx-auto p-8 card text-[var(--text)]">
+      <div className="page-shell page-shell--compact card text-[var(--text)]">
         <h1 className="text-2xl font-bold mb-6 heading">Welcome back</h1>
         <p className="search-intro">Your next journey is waiting. Log in to manage your trips.</p>
         <form onSubmit={handleSubmit} aria-describedby={error ? "login-error" : undefined}>

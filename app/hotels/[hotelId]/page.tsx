@@ -68,7 +68,7 @@ export default function HotelDetailsPage() {
     "★".repeat(rating) + "☆".repeat(5 - rating);
 
   return (
-    <div className="max-w-5xl mx-auto p-8 card">
+    <div className="page-shell card">
       {loading && <p role="status" className="muted">Loading hotel details...</p>}
       {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
       {hotel ? (

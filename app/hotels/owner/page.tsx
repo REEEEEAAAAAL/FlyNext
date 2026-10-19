@@ -229,7 +229,7 @@ export default function HotelList() {
     const showEmptyState = loaded && !loading && !error && hotels.length === 0 && (unfilteredEmpty || notAnOwner);
 
     return (
-        <div className="max-w-6xl mx-auto p-6">
+        <div className="page-shell">
             <h1 className="text-3xl font-bold mb-6 heading">Your host workspace</h1>
             <p className="search-intro">Manage properties, room types and nightly availability. Open a listing to view its rooms and guest reservations.</p>
 

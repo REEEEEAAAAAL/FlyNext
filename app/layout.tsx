@@ -4,6 +4,7 @@ import { FeedbackProvider } from "./context/FeedbackContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { Analytics } from "@vercel/analytics/next";
 import { SessionProvider } from "./context/SessionProvider";
+import Link from "next/link";
 
 export const metadata = {
   title: "FlyNext",
@@ -65,7 +66,7 @@ export default function RootLayout({
             <a href="#main-content" className="skip-link">Skip to content</a>
             <NavigationBar />
             <main id="main-content" className="app-main" tabIndex={-1}>{children}</main>
-            <footer className="site-footer"><a href="/">FlyNext</a><span>A portfolio travel demo. No real payments.</span><a href="/hotels/owner">Host workspace</a></footer>
+            <footer className="site-footer"><Link href="/">FlyNext</Link><span>A portfolio travel demo. No real payments.</span><Link href="/hotels/owner">Host workspace</Link></footer>
             </SessionProvider>
           </FeedbackProvider>
         </ThemeProvider>
