@@ -8,7 +8,7 @@ concurrency:
 jobs:
   isolated-regression:
     environment: flynext-ci
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       NEXT_TELEMETRY_DISABLED: '1'
@@ -17,10 +17,10 @@ jobs:
       CI_TEST_DATABASE_HOST: ${{ vars.CI_TEST_DATABASE_HOST }}
       CI_BUSINESS_DATABASE_TARGETS: ${{ vars.CI_BUSINESS_DATABASE_TARGETS }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
           cache: npm

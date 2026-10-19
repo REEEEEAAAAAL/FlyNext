@@ -26,6 +26,7 @@ import { notify } from "@/lib/api/notify";
 import { enforceRateLimit } from "@/lib/api/rate-limit";
 import { jsonMessage } from "@/lib/api/response";
 import {
+	AVAILABILITY_HORIZON_ERROR,
 	eachNight,
 	isWithinAvailabilityHorizon,
 	parseRouteId,
@@ -83,7 +84,7 @@ export const POST = withRoute(async (request) => {
 	return idempotentWrite(request, userId, "hotel-book", body, async tx => {
 	const unsupported = dates.some((night) => !isWithinAvailabilityHorizon(night));
 	if (unsupported) {
-		throw badRequest("The selected date is not supported for booking.");
+		throw badRequest(AVAILABILITY_HORIZON_ERROR);
 	}
 
 		await lockTraveller(tx, userId);

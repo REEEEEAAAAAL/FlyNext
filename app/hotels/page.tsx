@@ -7,11 +7,12 @@ import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
 import LocationCombobox from "@/app/components/LocationCombobox";
 import BookingSteps from "@/app/components/BookingSteps";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useFeedback } from "@/app/context/FeedbackContext";
 import { stayNights } from "@/app/lib/booking-display";
+import { addDays, atMidnight, AVAILABILITY_HORIZON_DAYS, AVAILABILITY_HORIZON_ERROR, isStayWithinAvailabilityHorizon } from "@/lib/api/validation";
 
 // Hotel interfaces
 interface Hotel {
@@ -23,6 +24,8 @@ interface Hotel {
     images?: string[];
     roomTypes: RoomType[];
 }
+
+const EMPTY_HOTEL_FILTERS = { name: "", starRating: "", priceMin: "", priceMax: "" };
 
 interface RoomType {
     id: number;
@@ -48,8 +51,7 @@ export default function HotelSearchPage() {
     }, []);
 
     const [availabilityStay, setAvailabilityStay] = useState("");
-    const emptyFilters = { name: "", starRating: "", priceMin: "", priceMax: "" };
-    const [filters, setFilters] = useState(emptyFilters);
+    const [filters, setFilters] = useState(EMPTY_HOTEL_FILTERS);
     const [hotels, setHotels] = useState<Hotel[]>([]);
     const [error, setError] = useState("");
     const [lastReservation, setLastReservation] = useState<{ id: number; checkIn: string; checkOut: string } | null>(null);
@@ -60,7 +62,7 @@ export default function HotelSearchPage() {
 
     const searchVersion = useRef(0);
     const searchController = useRef<AbortController | null>(null);
-    const loadHotels = async (selectedCity = "", arrival = "", departure = "", selectedFilters = filters) => {
+    const loadHotels = useCallback(async (selectedCity = "", arrival = "", departure = "", selectedFilters = EMPTY_HOTEL_FILTERS) => {
         const version = ++searchVersion.current;
         searchController.current?.abort();
         const controller = new AbortController();
@@ -79,13 +81,13 @@ export default function HotelSearchPage() {
         } finally {
             if (!controller.signal.aborted && version === searchVersion.current) setLoading(false);
         }
-    };
+    }, []);
     useEffect(() => {
         const saved = new URLSearchParams(window.location.search);
         const arrival = saved.get("checkIn") ?? ""; const departure = saved.get("checkOut") ?? "";
-        void loadHotels(saved.get("city") ?? "", arrival, departure, emptyFilters);
+        void loadHotels(saved.get("city") ?? "", arrival, departure, EMPTY_HOTEL_FILTERS);
         return () => { searchVersion.current += 1; searchController.current?.abort(); };
-    }, []);
+    }, [loadHotels]);
 
     // Redirect to login if not logged in
     const ensureLoggedIn = (): boolean => {
@@ -100,9 +102,10 @@ export default function HotelSearchPage() {
     const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
         event.preventDefault();
         if ((stayNights(checkIn, checkOut) ?? 0) < 1) { setError("Check-out must be after check-in."); return; }
+        if (!isStayWithinAvailabilityHorizon(new Date(`${checkIn}T00:00:00.000Z`), new Date(`${checkOut}T00:00:00.000Z`))) { setError(AVAILABILITY_HORIZON_ERROR); return; }
         if (filters.priceMin && filters.priceMax && Number(filters.priceMin) > Number(filters.priceMax)) { setError("Maximum nightly rate must be at least the minimum."); return; }
         setBookingStatus({});
-        void loadHotels(city, checkIn, checkOut);
+        void loadHotels(city, checkIn, checkOut, filters);
     };
 
     // Render star rating as stars
@@ -116,6 +119,9 @@ export default function HotelSearchPage() {
     };
 
     const nights = calculateNights();
+    const today = atMidnight(new Date());
+    const latestCheckIn = addDays(today, AVAILABILITY_HORIZON_DAYS).toISOString().slice(0, 10);
+    const latestCheckOut = addDays(today, AVAILABILITY_HORIZON_DAYS + 1).toISOString().slice(0, 10);
 
     /**
      * Book one room type for the selected dates.
@@ -334,6 +340,7 @@ export default function HotelSearchPage() {
                         id="check-in"
                         type="date"
                         value={checkIn}
+                        max={latestCheckIn}
                         onChange={(e) => setCheckIn(e.target.value)}
                         required
                         className="field"
@@ -347,6 +354,7 @@ export default function HotelSearchPage() {
                         id="check-out"
                         type="date"
                         min={checkIn || undefined}
+                        max={latestCheckOut}
                         value={checkOut}
                         onChange={(e) => setCheckOut(e.target.value)}
                         required
@@ -374,8 +382,8 @@ export default function HotelSearchPage() {
                     <button
                         type="button"
                         onClick={() => {
-                            setCity(""); setCheckIn(""); setCheckOut(""); setBookingStatus({}); setFilters(emptyFilters);
-                            void loadHotels("", "", "", emptyFilters);
+                            setCity(""); setCheckIn(""); setCheckOut(""); setBookingStatus({}); setFilters(EMPTY_HOTEL_FILTERS);
+                            void loadHotels("", "", "", EMPTY_HOTEL_FILTERS);
                         }}
                         className="flex-1 py-3 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 dark:ring-1 dark:ring-white/10"
                     >

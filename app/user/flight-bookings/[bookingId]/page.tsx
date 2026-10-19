@@ -4,7 +4,7 @@ import { loginUrl } from "@/app/lib/return-path";
 
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { clearAccessToken } from "@/app/lib/session";
@@ -132,7 +132,7 @@ export default function FlightBookingDetailsPage() {
      */
     const [confirming, setConfirming] = useState(false);
 
-    const refreshToken = async () => {
+    const refreshToken = useCallback(async () => {
         const token = getAccessToken();
         if (!token) {
             router.push(loginUrl());
@@ -152,7 +152,7 @@ export default function FlightBookingDetailsPage() {
             router.push("/auth/refresh");
             return;
         }
-    };
+    }, [router]);
 
     useEffect(() => {
         const token = getAccessToken();
@@ -210,7 +210,7 @@ export default function FlightBookingDetailsPage() {
         };
 
         fetchBooking();
-    }, [params.bookingId, router, showError]);
+    }, [params.bookingId, router, refreshToken, showError]);
 
     const handleVerifyFlight = async () => {
         const token = getAccessToken();

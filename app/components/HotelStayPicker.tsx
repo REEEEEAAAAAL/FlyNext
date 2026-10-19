@@ -7,6 +7,7 @@ import { sessionFetch, recoverSession } from "@/app/lib/session";
 import { bookingRequest, acknowledgeBooking } from "@/app/lib/booking-request";
 import { loginUrl } from "@/app/lib/return-path";
 import { stayNights } from "@/app/lib/booking-display";
+import { addDays, atMidnight, AVAILABILITY_HORIZON_DAYS, AVAILABILITY_HORIZON_ERROR, isStayWithinAvailabilityHorizon } from "@/lib/api/validation";
 
 interface Room { id: number; name: string; pricePerNight: number; amenities?: string | null }
 interface Night { date: string; availability: number }
@@ -47,12 +48,20 @@ export default function HotelStayPicker({ hotelId, rooms, roomDetail = false }: 
   const arrival = query.get("checkIn") ?? ""; const departure = query.get("checkOut") ?? "";
   setCheckIn(arrival); setCheckOut(departure);
   const controller = new AbortController();
+  if (arrival && departure && !isStayWithinAvailabilityHorizon(new Date(`${arrival}T00:00:00.000Z`), new Date(`${departure}T00:00:00.000Z`))) {
+   setError(AVAILABILITY_HORIZON_ERROR);
+   setLoading(false);
+   return () => { controller.abort(); };
+  }
   void load(controller.signal).then(loaded => {
    if (loaded && !controller.signal.aborted && (stayNights(arrival, departure) ?? 0) > 0) setSelected(`${arrival}/${departure}`);
   });
   return () => { controller.abort(); };
  }, [load]);
  const nights = stayNights(checkIn, checkOut) ?? 0;
+ const today = atMidnight(new Date());
+ const latestCheckIn = addDays(today, AVAILABILITY_HORIZON_DAYS).toISOString().slice(0, 10);
+ const latestCheckOut = addDays(today, AVAILABILITY_HORIZON_DAYS + 1).toISOString().slice(0, 10);
  const query = checkIn && checkOut ? `?${new URLSearchParams({checkIn, checkOut})}` : "";
  const available = (roomId: number) => {
   if (selected !== `${checkIn}/${checkOut}` || nights < 1 || loading || error) return null;
@@ -81,11 +90,12 @@ export default function HotelStayPicker({ hotelId, rooms, roomDetail = false }: 
   <form className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end" onSubmit={event => {
    event.preventDefault();
    if (nights < 1) { setError("Check-out must be after check-in."); return; }
+   if (!isStayWithinAvailabilityHorizon(new Date(`${checkIn}T00:00:00.000Z`), new Date(`${checkOut}T00:00:00.000Z`))) { setError(AVAILABILITY_HORIZON_ERROR); return; }
    router.replace(`${window.location.pathname}${query}`, {scroll:false});
    void load().then(loaded => { if (loaded) setSelected(`${checkIn}/${checkOut}`); });
   }}>
-   <label className="label min-w-0">Check-in<input className="field mt-1 w-full min-w-0" type="date" required value={checkIn} disabled={booking} onChange={event => setCheckIn(event.target.value)} /></label>
-   <label className="label min-w-0">Check-out<input className="field mt-1 w-full min-w-0" type="date" required min={checkIn || undefined} value={checkOut} disabled={booking} onChange={event => setCheckOut(event.target.value)} /></label>
+   <label className="label min-w-0">Check-in<input className="field mt-1 w-full min-w-0" type="date" required max={latestCheckIn} value={checkIn} disabled={booking} onChange={event => setCheckIn(event.target.value)} /></label>
+   <label className="label min-w-0">Check-out<input className="field mt-1 w-full min-w-0" type="date" required min={checkIn || undefined} max={latestCheckOut} value={checkOut} disabled={booking} onChange={event => setCheckOut(event.target.value)} /></label>
    <button className="button-primary" disabled={loading || booking}>Check dates & availability</button>
   </form>
   {loading && <p role="status">Loading availability...</p>}

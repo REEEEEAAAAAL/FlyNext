@@ -4,7 +4,7 @@ import { loginUrl } from "@/app/lib/return-path";
 
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clearAccessToken } from "@/app/lib/session";
@@ -139,7 +139,13 @@ export default function HotelList() {
         fetchData();
     }, [router]);
 
-    const fetchHotels = async () => {
+    const fetchHotels = useCallback(async (selectedFilters: {
+        city: string;
+        name: string;
+        starRating: string;
+        priceMin: string;
+        priceMax: string;
+    }) => {
         const version = ++requestVersion.current;
         requestController.current?.abort();
         const controller = new AbortController();
@@ -149,11 +155,11 @@ export default function HotelList() {
         try {
             // Build query parameters based on filters.
             const params = new URLSearchParams();
-            if (city) params.append("city", city);
-            if (name) params.append("name", name);
-            if (starRating) params.append("starRating", starRating);
-            if (priceMin) params.append("priceMin", priceMin);
-            if (priceMax) params.append("priceMax", priceMax);
+            if (selectedFilters.city) params.append("city", selectedFilters.city);
+            if (selectedFilters.name) params.append("name", selectedFilters.name);
+            if (selectedFilters.starRating) params.append("starRating", selectedFilters.starRating);
+            if (selectedFilters.priceMin) params.append("priceMin", selectedFilters.priceMin);
+            if (selectedFilters.priceMax) params.append("priceMax", selectedFilters.priceMax);
 
             const token = getAccessToken();
             const res = await sessionFetch(`/api/hotels/owner?${params.toString()}`, {
@@ -196,17 +202,17 @@ export default function HotelList() {
         } finally {
             if (version === requestVersion.current && !controller.signal.aborted) { setLoading(false); setLoaded(true); }
         }
-    };
+    }, [toastError]);
 
     // Fetch hotels on component mount.
     useEffect(() => {
-        void fetchHotels();
+        void fetchHotels({ city: "", name: "", starRating: "", priceMin: "", priceMax: "" });
         return () => { requestVersion.current += 1; requestController.current?.abort(); };
-    }, []);
+    }, [fetchHotels]);
 
     const handleFilterSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        fetchHotels();
+        void fetchHotels({ city, name, starRating, priceMin, priceMax });
     };
 
     // Helper to compute room price range.

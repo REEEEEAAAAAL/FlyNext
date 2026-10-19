@@ -4,7 +4,7 @@ import hooks from 'eslint-plugin-react-hooks';
 import accessibility from 'eslint-plugin-jsx-a11y';
 
 const config = [
-  { ignores: ['.next/**', 'dist/**', 'node_modules/**', '.database-maintenance/**', 'playwright-report/**', 'test-results/**'] },
+  { ignores: ['.next/**', 'dist/**', 'node_modules/**', '.database-maintenance/**', 'docs/internal/**', 'playwright-report/**', 'test-results/**'] },
   {
     files: ['**/*.{ts,tsx,js,mjs}'],
     languageOptions: { parser, ecmaVersion: 'latest', sourceType: 'module', parserOptions: { ecmaFeatures: { jsx: true } } },

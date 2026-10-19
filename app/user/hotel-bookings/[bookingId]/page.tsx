@@ -4,7 +4,7 @@ import { loginUrl } from "@/app/lib/return-path";
 
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { clearAccessToken } from "@/app/lib/session";
@@ -52,7 +52,7 @@ export default function HotelBookingDetailsPage() {
      * session starts the refresh flow immediately instead of rendering "Booking
      * not found" for a booking that exists.
      */
-    const refreshToken = async () => {
+    const refreshToken = useCallback(async () => {
         const token = getAccessToken();
         if (!token) {
             router.push(loginUrl());
@@ -72,7 +72,7 @@ export default function HotelBookingDetailsPage() {
             router.push("/auth/refresh");
             return;
         }
-    };
+    }, [router]);
 
     useEffect(() => {
         const token = getAccessToken();
@@ -124,7 +124,7 @@ export default function HotelBookingDetailsPage() {
         };
 
         fetchBooking();
-    }, [params.bookingId, router, toastError]);
+    }, [params.bookingId, router, refreshToken, toastError]);
 
     const parseAmenities = (amenitiesString: string | null) => {
         if (!amenitiesString) return [];

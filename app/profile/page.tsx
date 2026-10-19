@@ -4,7 +4,7 @@ import { loginUrl } from "@/app/lib/return-path";
 
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { clearAccessToken } from "@/app/lib/session";
 import { useFeedback } from "@/app/context/FeedbackContext";
@@ -85,14 +85,14 @@ export default function ProfilePage() {
      * of a long form would otherwise leave the only explanation at the top of
      * the card. One helper, so the two can never disagree about what happened.
      */
-    const report = (type: "success" | "error", text: string) => {
+    const report = useCallback((type: "success" | "error", text: string) => {
         setMessage({ type, text });
         if (type === "success") {
             success("Profile updated", { description: text });
         } else {
             toastError("Profile not updated", { description: text });
         }
-    };
+    }, [success, toastError]);
 
     // Fetch user profile on component mount.
     useEffect(() => {
@@ -156,7 +156,7 @@ export default function ProfilePage() {
         };
 
         fetchProfile();
-    }, [router]);
+    }, [router, report]);
 
   const handleImageError = () => {
       setPreviewImage("/user-profile-default.svg");

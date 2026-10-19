@@ -4,6 +4,23 @@ import { addDays, eachNight } from "./api/validation";
 
 type Reader = Pick<Prisma.TransactionClient, "roomAvailabilityRecord" | "hotelReservation">;
 
+type AvailabilityRecord = { date: Date; availability: number };
+type ActiveStay = { checkIn: Date; checkOut: Date };
+
+export function calculateNightlyAvailability(
+	room: { id: number; currentAvailability: number },
+	dates: readonly Date[],
+	records: readonly AvailabilityRecord[],
+	bookings: readonly ActiveStay[]
+) {
+	const stored = new Map(records.map(row => [row.date.getTime(), row.availability]));
+	return dates.map(date => {
+		const occupied = bookings.filter(row => row.checkIn <= date && row.checkOut > date).length;
+		const derived = Math.max(0, room.currentAvailability - occupied);
+		return { roomTypeId: room.id, date, availability: Math.max(0, Math.min(derived, stored.get(date.getTime()) ?? derived)) };
+	});
+}
+
 export function assertDateAligned(date: Date): void {
 	if (!Number.isFinite(date.getTime()) || date.getUTCHours() || date.getUTCMinutes() || date.getUTCSeconds() || date.getUTCMilliseconds()) {
 		throw conflict("Historical hotel dates require review before inventory can be changed");
@@ -24,12 +41,7 @@ export async function nightlyAvailability(db: Reader, room: { id: number; curren
 	]);
 	for (const row of records) assertDateAligned(row.date);
 	for (const row of bookings) { assertDateAligned(row.checkIn); assertDateAligned(row.checkOut); }
-	const stored = new Map(records.map(row => [row.date.getTime(), row.availability]));
-	return dates.map(date => {
-		const occupied = bookings.filter(row => row.checkIn <= date && row.checkOut > date).length;
-		const derived = Math.max(0, room.currentAvailability - occupied);
-		return { roomTypeId: room.id, date, availability: Math.max(0, Math.min(derived, stored.get(date.getTime()) ?? derived)) };
-	});
+	return calculateNightlyAvailability(room, dates, records, bookings);
 }
 
 export async function materializeStay(tx: Prisma.TransactionClient, room: { id: number; currentAvailability: number }, checkIn: Date, checkOut: Date) {

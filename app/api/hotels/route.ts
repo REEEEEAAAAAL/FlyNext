@@ -28,7 +28,7 @@ import {
 } from "@/lib/api/validation";
 import { DEFAULT_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
 import type { HotelWithRoomTypes } from "@/types";
-import { eachNight, isWithinAvailabilityHorizon, parseStayRange } from "@/lib/api/validation";
+import { AVAILABILITY_HORIZON_ERROR, eachNight, isWithinAvailabilityHorizon, parseStayRange } from "@/lib/api/validation";
 import { nightlyAvailability } from "@/lib/hotel-inventory";
 import { money } from "@/lib/booking-locks";
 
@@ -56,7 +56,7 @@ export const GET = withRoute(async (request) => {
 	if (Boolean(checkIn) !== Boolean(checkOut)) throw badRequest("Both checkIn and checkOut are required");
 	const stay = checkIn && checkOut ? parseStayRange(checkIn, checkOut) : null;
 	const dates = stay ? eachNight(stay.checkIn, stay.checkOut) : [];
-	if (dates.some(date => !isWithinAvailabilityHorizon(date))) throw badRequest("The selected date is not supported for booking.");
+	if (dates.some(date => !isWithinAvailabilityHorizon(date))) throw badRequest(AVAILABILITY_HORIZON_ERROR);
 
 	const city = readFilter(searchParams, "city");
 	const name = readFilter(searchParams, "name");

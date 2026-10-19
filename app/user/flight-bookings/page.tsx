@@ -6,7 +6,7 @@ import EmptyState from "@/app/components/EmptyState";
 
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clearAccessToken } from "@/app/lib/session";
@@ -119,7 +119,7 @@ export default function UserFlightBookingsPage() {
      * means an expired session starts the refresh flow immediately instead of
      * leaving the traveller on a page whose only content is "Unauthorized".
      */
-    const refreshToken = async () => {
+    const refreshToken = useCallback(async () => {
         const token = getAccessToken();
         if (!token) {
             router.push(loginUrl());
@@ -139,7 +139,7 @@ export default function UserFlightBookingsPage() {
             router.push("/auth/refresh");
             return;
         }
-    };
+    }, [router]);
 
     useEffect(() => {
         // Protect the page: if no access token is found, redirect to login.
@@ -203,7 +203,7 @@ export default function UserFlightBookingsPage() {
         };
 
         fetchBookings();
-    }, [router, showError]);
+    }, [router, refreshToken, showError]);
 
     return (
         <div className="card page-shell text-black dark:text-zinc-100">

@@ -263,6 +263,7 @@ export function atMidnight(date: Date): Date {
  * from. Sixty nights is always sixty nights.
  */
 export const AVAILABILITY_HORIZON_DAYS = 60;
+export const AVAILABILITY_HORIZON_ERROR = "The selected date is not supported for booking.";
 
 /**
  * The inclusive list of nights a room type's calendar covers, from today.
@@ -300,6 +301,15 @@ export function isWithinAvailabilityHorizon(
 	const { start, end } = availabilityHorizon(today);
 	const day = atMidnight(night).getTime();
 	return day >= start.getTime() && day <= end.getTime();
+}
+
+export function isStayWithinAvailabilityHorizon(
+	checkIn: Date,
+	checkOut: Date,
+	today: Date = new Date()
+): boolean {
+	if (!Number.isFinite(checkIn.getTime()) || !Number.isFinite(checkOut.getTime()) || checkOut.getTime() <= checkIn.getTime()) return false;
+	return eachNight(checkIn, checkOut).every(night => isWithinAvailabilityHorizon(night, today));
 }
 
 /** Shift a date by whole days while keeping UTC calendar time. */
@@ -352,7 +362,7 @@ export function parseStayRange(
 	const nights = Math.round(
 		(checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)
 	);
-	if (nights > AVAILABILITY_HORIZON_DAYS + 1) throw badRequest("The selected stay exceeds the booking horizon");
+	if (nights > AVAILABILITY_HORIZON_DAYS + 1) throw badRequest(AVAILABILITY_HORIZON_ERROR);
 	return { checkIn, checkOut, nights };
 }
 
