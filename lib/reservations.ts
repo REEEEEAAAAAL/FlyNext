@@ -463,6 +463,19 @@ export function buildSegment(flight: AfsFlight): FlightSegmentJson {
 		to: airportCode(flight.destination),
 		departDate: isoOrNull(flight.departureTime),
 		arriveDate: isoOrNull(flight.arrivalTime),
+		flightNumber: flight.flightNumber ?? null,
+		airlineCode: flight.airline.code,
+		airlineName: flight.airline.name,
+		originName: flight.origin.name,
+		originCity: flight.origin.city,
+		originCountry: flight.origin.country,
+		destinationName: flight.destination.name,
+		destinationCity: flight.destination.city,
+		destinationCountry: flight.destination.country,
+		durationMinutes: flight.durationMinutes ?? null,
+		status: flight.status,
+		price: flight.price,
+		currency: flight.currency ?? "USD",
 	};
 }
 

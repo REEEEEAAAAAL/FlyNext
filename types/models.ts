@@ -99,6 +99,19 @@ export type FlightSegmentJson = {
 	to: string | null;
 	departDate: string | null;
 	arriveDate: string | null;
+	flightNumber?: string | null;
+	airlineCode?: string | null;
+	airlineName?: string | null;
+	originName?: string | null;
+	originCity?: string | null;
+	originCountry?: string | null;
+	destinationName?: string | null;
+	destinationCity?: string | null;
+	destinationCountry?: string | null;
+	durationMinutes?: number | null;
+	status?: string | null;
+	price?: number | null;
+	currency?: string | null;
 };
 
 /**

@@ -153,11 +153,28 @@ describe("splitFlightDirections", () => {
 describe("buildFlightLegs", () => {
 	/** The stored segment for one of the fixture legs. */
 	function stored(flight: AfsFlight) {
+		const isoOrNull = (value: string): string | null => {
+			const date = new Date(value);
+			return Number.isNaN(date.getTime()) ? null : date.toISOString();
+		};
 		return {
 			from: flight.origin.code,
 			to: flight.destination.code,
-			departDate: flight.departureTime,
-			arriveDate: flight.arrivalTime,
+			departDate: isoOrNull(flight.departureTime),
+			arriveDate: isoOrNull(flight.arrivalTime),
+			flightNumber: flight.flightNumber ?? null,
+			airlineCode: flight.airline.code,
+			airlineName: flight.airline.name,
+			originName: flight.origin.name,
+			originCity: flight.origin.city,
+			originCountry: flight.origin.country,
+			destinationName: flight.destination.name,
+			destinationCity: flight.destination.city,
+			destinationCountry: flight.destination.country,
+			durationMinutes: flight.durationMinutes ?? null,
+			status: flight.status,
+			price: flight.price,
+			currency: flight.currency ?? "USD",
 		};
 	}
 
@@ -227,6 +244,19 @@ describe("buildFlightLegs", () => {
 			to: "HKG",
 			departDate: null,
 			arriveDate: null,
+			flightNumber: null,
+			airlineCode: "AC",
+			airlineName: "Air Canada",
+			originName: "YYZ",
+			originCity: "YYZ",
+			originCountry: "",
+			destinationName: "HKG",
+			destinationCity: "HKG",
+			destinationCountry: "",
+			durationMinutes: null,
+			status: "SCHEDULED",
+			price: 100,
+			currency: "USD",
 		});
 	});
 
