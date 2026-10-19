@@ -1,5 +1,5 @@
 # Base Node.js image
-FROM node:20-alpine AS base
+FROM node:24-alpine AS base
 
 # Create app directory
 WORKDIR /app

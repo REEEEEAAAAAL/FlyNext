@@ -22,12 +22,17 @@ coverage
 .npm-cache
 .acl-recovery
 .local-test-db
+.database-maintenance
 .neon-test-approval.json
 .vercel
 .codex
 .agents
 .aws
 dev_docs
+docs/internal
+playwright-report
+test-results
+.e2e-next
 repair-flight-directions.backup.json
 **/*.db
 **/*.sqlite
