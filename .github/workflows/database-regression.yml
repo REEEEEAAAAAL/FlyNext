@@ -1,5 +1,9 @@
 name: 隔离数据库与浏览器回归
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
 permissions:
   contents: read
 concurrency:
@@ -7,6 +11,8 @@ concurrency:
   cancel-in-progress: false
 jobs:
   isolated-regression:
+    # Temporary PR #2 validation only; restore workflow_dispatch after run.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.number == 2 && github.event.pull_request.head.ref == 'codex/improvements' && github.event.pull_request.head.repo.full_name == github.repository) }}
     environment: flynext-ci
     runs-on: ubuntu-24.04
     timeout-minutes: 60
