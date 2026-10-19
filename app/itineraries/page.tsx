@@ -157,7 +157,7 @@ export default function ItineraryListPage() {
             <h1 className="text-3xl font-bold mb-6 heading">
                 Your trips, in one place
             </h1>
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-6"><p className="muted text-sm">Review reservations, confirm your demo booking, or manage a change of plans.</p><Link className="button-primary" href="/itineraries/new">Build an itinerary</Link></div>
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6"><p className="muted text-sm">Review reservations, confirm your demo booking, or manage a change of plans.</p>{itineraries.length > 0 && <Link className="button-primary" href="/itineraries/new">Build an itinerary</Link>}</div>
             {loading && <p role="status" className="muted">Loading itineraries...</p>}
             {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
             {itineraries.length > 0 ? (

@@ -116,6 +116,7 @@
  */
 html {
   background-color: var(--background);
+  scrollbar-gutter: stable;
 }
 
 body {
