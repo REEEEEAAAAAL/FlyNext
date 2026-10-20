@@ -3,6 +3,12 @@ import { lookup } from "node:dns/promises";
 import type { PrismaClient } from "@prisma/client";
 import type { OperationEnvironment } from "./database-safety";
 
+export function assertDockerOperationMode(env: OperationEnvironment, action: string): void {
+	if (action === "reset" && env.AFS_MOCK !== "true") {
+		throw new Error("Docker reset requires built-in AFS; remote tickets must be reconciled before creating a fresh project.");
+	}
+}
+
 export function assertDockerDatabaseTarget(env: OperationEnvironment): void {
 	let url: URL;
 	try { url = new URL(env.DATABASE_URL ?? ""); }

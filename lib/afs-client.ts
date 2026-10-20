@@ -34,7 +34,7 @@
  */
 
 import axios, { type AxiosInstance, type AxiosResponse } from "axios";
-import { badGateway } from "./api/errors";
+import { badGateway, ProviderBookingRejected } from "./api/errors";
 import {
 	DOCKER_AFS_BASE_URL,
 	LOCAL_AFS_BASE_URL,
@@ -70,7 +70,7 @@ export { offlineStats } from "./afs/offline";
  * the environment can change between calls, and a single cached client would
  * keep sending requests to whichever address was configured first.
  */
-let cachedClient: { baseURL: string; client: AxiosInstance } | null = null;
+let cachedClient: { baseURL: string; apiKey: string; client: AxiosInstance } | null = null;
 
 /**
  * The client for `baseURL`, or a clear error when HTTP mode cannot work.
@@ -84,12 +84,12 @@ let cachedClient: { baseURL: string; client: AxiosInstance } | null = null;
 function getClient(baseURL: string): AxiosInstance {
 	const apiKey = process.env.AFS_API_KEY;
 	if (!apiKey) {
-		throw new Error(
+		throw badGateway(
 			"AFS_API_KEY must be set, or set AFS_MOCK=true to run against the " +
 				"built-in offline provider. See .env.example."
 		);
 	}
-	if (cachedClient !== null && cachedClient.baseURL === baseURL) {
+	if (cachedClient !== null && cachedClient.baseURL === baseURL && cachedClient.apiKey === apiKey) {
 		return cachedClient.client;
 	}
 	const client = axios.create({
@@ -101,7 +101,7 @@ function getClient(baseURL: string): AxiosInstance {
 		// Fail fast instead of hanging a request handler indefinitely.
 		timeout: 15_000,
 	});
-	cachedClient = { baseURL, client };
+	cachedClient = { baseURL, apiKey, client };
 	return client;
 }
 
@@ -115,10 +115,11 @@ function getClient(baseURL: string): AxiosInstance {
  */
 function remoteClient(): AxiosInstance | undefined {
 	const resolution = resolveAfsMode();
-	if (resolution.mode === "offline" || resolution.baseUrl === undefined) {
+	if (resolution.mode === "offline") {
 		noteOfflineMode(resolution.reason);
 		return undefined;
 	}
+	if (resolution.baseUrl === undefined) throw badGateway("Remote AFS requires a usable AFS_BASE_URL");
 	return getClient(resolution.baseUrl);
 }
 
@@ -154,6 +155,32 @@ function expectRecord(data: unknown, action: string): Record<string, unknown> {
 	return data;
 }
 
+function toFlight(value: unknown, action: string): AfsFlight {
+	const row = expectRecord(value, action);
+	const airport = (value: unknown): AfsAirport => {
+		const item = expectRecord(value, action);
+		if (typeof item.code !== "string" || typeof item.name !== "string" ||
+			typeof item.city !== "string" || typeof item.country !== "string") throw badGateway(action);
+		return { code: item.code, name: item.name, city: item.city, country: item.country };
+	};
+	const airline = expectRecord(row.airline, action);
+	if (typeof row.id !== "string" || typeof row.departureTime !== "string" ||
+		typeof row.arrivalTime !== "string" || typeof row.status !== "string" ||
+		typeof airline.code !== "string" || typeof airline.name !== "string" ||
+		typeof row.price !== "number" || !Number.isFinite(row.price) || row.price < 0 ||
+		typeof row.availableSeats !== "number" || !Number.isFinite(row.availableSeats)) throw badGateway(action);
+	return {
+		id: row.id, departureTime: row.departureTime, arrivalTime: row.arrivalTime, status: row.status,
+		airline: { code: airline.code, name: airline.name }, origin: airport(row.origin), destination: airport(row.destination),
+		price: row.price, availableSeats: row.availableSeats,
+		...(typeof row.flightNumber === "string" ? { flightNumber: row.flightNumber } : {}),
+		...(typeof row.currency === "string" ? { currency: row.currency } : {}),
+		...(typeof row.duration === "string" ? { duration: row.duration } : {}),
+		...(typeof row.duration === "number" && Number.isFinite(row.duration) ? { durationMinutes: row.duration } : {}),
+		...(typeof row.durationMinutes === "number" && Number.isFinite(row.durationMinutes) ? { durationMinutes: row.durationMinutes } : {}),
+	};
+}
+
 /**
  * Validate one flight-group entry.
  *
@@ -168,10 +195,12 @@ function toFlightGroup(value: unknown, action: string): AfsFlightGroup {
 	}
 	const legs = record.legs;
 	const totalPrice = record.totalPrice;
+	const flights = record.flights.map(value => toFlight(value, action));
 	return {
-		flights: record.flights as AfsFlight[],
+		flights,
 		legs: typeof legs === "number" ? legs : record.flights.length,
-		totalPrice: typeof totalPrice === "number" ? totalPrice : 0,
+		totalPrice: typeof totalPrice === "number" && Number.isFinite(totalPrice)
+			? totalPrice : Math.round(flights.reduce((sum, flight) => sum + flight.price, 0) * 100) / 100,
 		...(typeof record.totalDuration === "number"
 			? { totalDuration: record.totalDuration }
 			: {}),
@@ -274,7 +303,8 @@ export async function createBooking(
 	try {
 		const response: AxiosResponse<unknown> = await client.post(
 			"/api/bookings",
-			bookingData
+			bookingData,
+			{ headers: operationId ? { "Idempotency-Key": operationId } : {} }
 		);
 		const record = expectRecord(response.data, action);
 		if (
@@ -287,12 +317,13 @@ export async function createBooking(
 			bookingReference: record.bookingReference,
 			...(typeof record.id === "string" ? { id: record.id } : {}),
 			status: typeof record.status === "string" ? record.status : "CONFIRMED",
-			flights: record.flights as AfsFlight[],
+			flights: record.flights.map(value => toFlight(value, action)),
 			...(typeof record.ticketNumber === "string"
 				? { ticketNumber: record.ticketNumber }
 				: {}),
 		};
 	} catch (error) {
+		if (axios.isAxiosError(error) && [400, 404, 409].includes(error.response?.status ?? 0)) throw new ProviderBookingRejected();
 		return upstreamFailure(action, error);
 	}
 }
@@ -320,7 +351,7 @@ export async function retrieveBooking(
 					: bookingReference,
 			status: typeof record.status === "string" ? record.status : "UNKNOWN",
 			flights: Array.isArray(record.flights)
-				? (record.flights as AfsFlight[])
+				? record.flights.map(value => toFlight(value, action))
 				: [],
 			...(typeof record.createdAt === "string"
 				? { createdAt: record.createdAt }
@@ -359,7 +390,7 @@ export async function cancelFlight(
 		return {
 			status: typeof record.status === "string" ? record.status : "UNKNOWN",
 			flights: Array.isArray(record.flights)
-				? (record.flights as AfsFlight[])
+				? record.flights.map(value => toFlight(value, action))
 				: [],
 		};
 	} catch (error) {

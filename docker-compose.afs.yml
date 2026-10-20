@@ -1,0 +1,9 @@
+services:
+  nextjs:
+    environment:
+      AFS_BASE_URL: http://afs:3000
+      AFS_MOCK: "false"
+      AFS_API_KEY: ${AFS_LOCAL_API_KEY:?Generate the dedicated AFS configuration first}
+    depends_on:
+      afs:
+        condition: service_healthy

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { assertDockerDatabaseIdentity } from "@/lib/docker-database-safety";
+import { assertDockerDatabaseIdentity, assertDockerOperationMode } from "@/lib/docker-database-safety";
 import { PrismaClient } from "@prisma/client";
 import * as fs from "node:fs";
 
@@ -8,6 +8,13 @@ vi.mock("node:dns/promises", () => ({ lookup: vi.fn(async () => [{ address: "172
 const id = "a1111111-1111-4111-8111-111111111111";
 
 describe("Docker database isolation", () => {
+	it("keeps built-in reset available and refuses remote ticket orphaning before connection", () => {
+		expect(() => assertDockerOperationMode({ AFS_MOCK: "true" }, "reset")).not.toThrow();
+		for (const flag of [undefined, "", "false"]) {
+			expect(() => assertDockerOperationMode({ AFS_MOCK: flag }, "reset")).toThrow("remote tickets must be reconciled");
+		}
+		expect(() => assertDockerOperationMode({ AFS_MOCK: "false" }, "start")).not.toThrow();
+	});
 	const env = {
 		NODE_ENV: "development", COMPOSE_PROJECT_NAME: "flynext-local-aabbccddeeff",
 		FLYNEXT_DOCKER_INSTANCE_ID: id, FLYNEXT_ALLOW_DATABASE_RESET: "1", FLYNEXT_DOCKER_ACTION: "reset",

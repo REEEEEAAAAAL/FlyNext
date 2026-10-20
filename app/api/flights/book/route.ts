@@ -42,6 +42,8 @@ import { jsonCreated } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/validation";
 import { createFlightReservation } from "@/lib/reservations";
 import { idempotentExternal } from "@/lib/api/idempotency";
+import { reconcileFlightRequest } from "@/lib/afs-recovery";
+import { prisma } from "@/lib/prisma";
 import { isAfsOffline } from "@/lib/afs-client";
 import { recoverBooking } from "@/lib/afs/offline";
 
@@ -174,7 +176,12 @@ export const POST = withRoute(async (request) => {
 			...booking,
 			reservationId,
 		} };
-	}, isAfsOffline() ? async operationId => {
+	}, async operationId => {
+		if (!isAfsOffline()) {
+			await reconcileFlightRequest(operationId);
+			const stored = await prisma.bookingRequest.findUniqueOrThrow({ where: { id: operationId } });
+			return stored.state === "COMPLETE" && stored.statusCode !== null ? { status: stored.statusCode, body: stored.response } : null;
+		}
 		const issued = await recoverBooking(operationId);
 		if (!issued) return null;
 		const { booking, reservationId } = await createFlightReservation(
@@ -182,5 +189,5 @@ export const POST = withRoute(async (request) => {
 			{ operationId, returnLegCount, recoverOnly: true, createBooking: async () => issued }
 		);
 		return { status: 201, body: { message: "Flight booking completed successfully", ...booking, reservationId } };
-	} : undefined);
+	}, { payload: { email, firstName, lastName, passportNumber, flightIds }, returnLegCount: returnLegCount ?? null });
 });

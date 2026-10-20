@@ -104,8 +104,8 @@ export interface AfsModeResolution {
  * 1. `AFS_MOCK=true` — an explicit request for the offline implementation. It
  *    wins over a configured URL so that CI and Vercel can pin the behaviour
  *    without touching `AFS_BASE_URL`.
- * 2. `AFS_MOCK=false` — selects the remote provider when a usable
- *    `AFS_BASE_URL` exists; otherwise falls back to the offline provider.
+ * 2. An explicit false flag requires the remote provider. Missing configuration
+ *    fails at the HTTP boundary instead of selecting synthetic data.
  * 3. No usable `AFS_BASE_URL` — offline, because there is nowhere to call.
  * 4. Otherwise remote.
  */
@@ -116,11 +116,11 @@ export function resolveAfsMode(): AfsModeResolution {
 	if (isAffirmative(flag)) {
 		return { mode: "offline", reason: "forced-offline" };
 	}
-	if (baseUrl === undefined) {
-		return { mode: "offline", reason: "no-usable-base-url" };
-	}
 	if (flag !== undefined && flag.trim().toLowerCase() === "false") {
 		return { mode: "remote", reason: "forced-remote", baseUrl };
+	}
+	if (baseUrl === undefined) {
+		return { mode: "offline", reason: "no-usable-base-url" };
 	}
 	return { mode: "remote", reason: "remote-configured", baseUrl };
 }
