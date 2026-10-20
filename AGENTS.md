@@ -4,7 +4,7 @@ FlyNext is a travel booking portfolio application built with Next.js. The interf
 
 ## Tech stack
 
-- Next.js 15 App Router, React 19, TypeScript 5 in strict mode, and Tailwind CSS 4.
+- Node.js 24, Next.js 15.5.28 App Router, React 19.0.9, TypeScript 5 in strict mode, and Tailwind CSS 4.
 - PostgreSQL and Prisma 6.3.1.
 - Vitest for unit and integration tests; Playwright for browser end-to-end tests.
 - The lockfile is authoritative for dependency versions. Do not upgrade or replace dependencies unless explicitly requested.
@@ -21,7 +21,7 @@ FlyNext is a travel booking portfolio application built with Next.js. The interf
 - `tests/`, `e2e/`: Unit/integration tests and browser workflows.
 - `scripts/`: Development, verification, and maintenance commands.
 - `docs/`: Public development/deployment guides and screenshots using synthetic data.
-- `docs/internal/` provides optional local context. Public development, builds, and tests must not depend on it.
+- `afs/`: Pinned standalone provider overlay; see `afs/README.md` only when changing that provider.
 
 ## Common commands
 
@@ -71,5 +71,7 @@ FlyNext is a travel booking portfolio application built with Next.js. The interf
 
 ## Documentation and delivery
 
-Read relevant sections of `docs/DEVELOPMENT.md` or `docs/DEPLOYMENT.md` as needed; reading all documentation is unnecessary.
+Start with `README.md` for architecture and setup. Read `docs/DEVELOPMENT.md` for testing and CI, `docs/DEPLOYMENT.md` for hosting and migrations, or `docs/DOCKER.md` for local containers, only as needed. The application has eight migrations through `20261020091000_external_recovery`; the standalone AFS has its own migration history.
+Production uses the built-in AFS. Keep optional remote-provider instructions separate from production operations. Never change providers on an existing ticket database.
+Make maintenance changes on a new branch from current `origin/main`; squash-merge ahead/behind differences require no repair.
 Keep public documentation concise and reproducible. Do not include internal handoffs, private endpoints, or production operations records.

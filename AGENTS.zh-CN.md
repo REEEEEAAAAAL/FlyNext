@@ -4,7 +4,7 @@ FlyNext 是基于 Next.js 的旅行预订作品集应用。用户界面为英语
 
 ## 技术栈
 
-- Next.js 15 App Router、React 19、TypeScript 5 strict、Tailwind CSS 4。
+- Node.js 24、Next.js 15.5.28 App Router、React 19.0.9、TypeScript 5 strict、Tailwind CSS 4。
 - PostgreSQL 与 Prisma 6.3.1。
 - Vitest 用于单元和集成测试，Playwright 用于浏览器端到端测试。
 - 依赖版本以锁文件为准；未经明确要求，不升级或替换依赖。
@@ -21,7 +21,7 @@ FlyNext 是基于 Next.js 的旅行预订作品集应用。用户界面为英语
 - `tests/`、`e2e/`：单元/集成测试和浏览器工作流。
 - `scripts/`：开发、验证和维护命令。
 - `docs/`：公开开发/部署说明及合成数据截图。
-- `docs/internal/` 是可选的本机上下文；公开开发、构建和测试不得依赖该目录。
+- `afs/`：固定版本的独立供应商覆盖实现；仅修改该供应商时阅读 `afs/README.md`。
 
 ## 常用命令
 
@@ -71,5 +71,7 @@ FlyNext 是基于 Next.js 的旅行预订作品集应用。用户界面为英语
 
 ## 文档与交付
 
-按需阅读 `docs/DEVELOPMENT.md` 或 `docs/DEPLOYMENT.md` 的相关部分，不需通读所有文档。
+先读 `README.md` 了解架构和安装。按需阅读 `docs/DEVELOPMENT.md` 中的测试与 CI、`docs/DEPLOYMENT.md` 中的托管与迁移，或 `docs/DOCKER.md` 中的本地容器操作。应用包含八条迁移，最新为 `20261020091000_external_recovery`；独立 AFS 使用自己的迁移历史。
+生产环境使用内置 AFS；可选远程供应商操作应与生产操作分开。不得对已有机票数据库切换供应商。
+维护改动从最新 `origin/main` 创建新分支；Squash Merge 后的 Ahead/Behind 差异不需修复。
 公开说明应简洁、可复现，不加入内部交接、私人端点或生产运维记录。

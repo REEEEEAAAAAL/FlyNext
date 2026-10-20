@@ -2,6 +2,8 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+[在线演示](https://flynext-puce.vercel.app)
+
 FlyNext 是一个全栈旅行预订应用，作为软件工程作品集项目展示。它把航班预订、酒店住宿、行程、账户管理和房主管理流程整合在一个响应式应用中。界面为英语，支持浅色和深色主题。
 
 项目展示浏览器工作流如何连接鉴权 API、PostgreSQL 事务写入、可替换的航班供应商、媒体与收据服务。航班和酒店记录均为合成演示数据。结账仅用于 DEMO 演示：不会授权或转移资金，也不会收集真实银行卡或护照信息。
@@ -40,7 +42,7 @@ FlyNext 是一个全栈旅行预订应用，作为软件工程作品集项目展
 
 | 技术 | 用途 |
 | --- | --- |
-| Next.js 15 App Router 和 React 19 | 服务端渲染的 Web 应用及 API Route Handlers。 |
+| Node.js 24、Next.js 15.5.28 App Router 和 React 19.0.9 | 应用运行时、服务端渲染的 Web 应用及 API Route Handlers。 |
 | TypeScript 5 | 严格的应用、API 和测试契约。 |
 | Tailwind CSS 4 | 响应式样式及浅色/深色主题。 |
 | PostgreSQL 和 Prisma 6.3.1 | 关系数据持久化、Schema 迁移、事务和生成客户端。 |
@@ -73,7 +75,7 @@ flowchart LR
 - **保持预订变更一致。** 数据库事务将相关预订、库存、行程和结账写入组合在一起。航班操作跨越供应商边界，因此本地写入失败时会尝试补偿性取消上游机票；无法自动对账的结果会提示运营人员处理，而不会伪报为本地成功预订。
 - **让重试安全。** 支持幂等的预订或结账写入端点要求提供 `Idempotency-Key`。键与操作及请求指纹绑定；相同请求重放会返回已保存结果，同一键用于不同输入则返回冲突。
 - **保护会话和客人数据。** 访问令牌保存在浏览器内存中。刷新凭证使用 HttpOnly Cookie，并通过服务端刷新会话记录轮换。仅当前经过所有权校验的房主端点会返回客人预订；公开酒店和房型响应不会暴露客人预订。敏感响应不会通过共享缓存提供。
-- **统一 API 错误边界。** Route Handlers 使用 `withRoute` 和类型化 `ApiError` 返回稳定 JSON 错误，数据库内部细节只写入服务端日志。限流响应包含 `Retry-After`。限流器是进程内实现，应视为突发保护，而非分布式配额。
+- **统一 API 错误边界。** Route Handlers 使用 `withRoute` 和类型化 `ApiError` 返回稳定 JSON 错误，数据库内部细节只写入服务端日志。限流响应包含 `Retry-After`。部署环境中的鉴权与写入限额使用跨进程原子 PostgreSQL 计数；公开读取使用有容量上限的进程内计数。
 - **隔离测试数据与业务数据。** 数据库集成和 E2E 运行器会在迁移或清理前验证已登记测试目标，并在写入边界再次核验身份。测试库与开发库、生产库分离；具有破坏性的测试夹具绝不能指向业务数据库。
 - **将供应商和用户输入视为不可信。** 远程 AFS 响应会先做结构校验再使用。上传图片会先校验再存储。DEMO 结账会拒绝真实银行卡和护照信息。
 
@@ -113,6 +115,8 @@ npm run prisma:generate
 
 `prisma:migrate` 执行 `prisma migrate deploy`；它应用待执行迁移，不会重置数据库。对于已有数据库，先运行 `npx prisma migrate status` 检查状态，并在执行任何迁移前确认数据库身份和迁移历史。不要把演示或重置 Seed 当作迁移步骤。
 
+应用包含八条迁移，最新为 `20261020091000_external_recovery`，当前开发库、开发者测试库、CI 测试库、预览库和生产库均已应用。各迁移职责及历史核验见[迁移清单](docs/DEPLOYMENT.md#migration-inventory)。可选独立 AFS 维护自己的迁移历史。
+
 位置搜索等功能需要城市和机场参考数据。专用开发库尚未初始化时，可运行 `npm run seed:reference`，脚本会在事务中补充参考内容且不会删除数据。该脚本还会创建参考酒店、房型、逐夜库存，并可能创建或更新配置的演示房主账户；运行前请检查 `SEED_OWNER_EMAIL` 和 `SEED_OWNER_PASSWORD` 的行为。只对确认无误的目标开发库运行。它会写入数据库，不是例行检查。数据库安全规则见[开发指南](docs/DEVELOPMENT.md)。部署与发布步骤见[部署指南](docs/DEPLOYMENT.md)。
 
 启动应用：
@@ -135,7 +139,7 @@ npm run dev
 | `CLOUDINARY_CLOUD_NAME`、`CLOUDINARY_API_KEY`、`CLOUDINARY_API_SECRET` | Cloudinary 上传凭据。`CLOUDINARY_URL` 可作为合并配置；`CLOUDINARY_FOLDER` 设置资源目录。 |
 | `AFS_BASE_URL`、`AFS_API_KEY`、`AFS_MOCK` | 选择远程 AFS 服务并进行鉴权，或强制使用内置供应商。参见[航班供应商](#航班供应商)。 |
 | `AFS_LOCAL_AGENCY`、`AFS_SEED_DAYS`、`AFS_LOCAL_API_KEY`、`AFS_DOCKER_*` | 可选 AFS 服务、合成时刻表和独立数据库的专用 Docker 生成配置；内置供应商无需配置。参见 [Docker 指南](docs/DOCKER.md)。 |
-| `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` | 供可选 Compose 数据库配置使用；连接现有 PostgreSQL 服务时不需要。 |
+| `COMPOSE_PROJECT_NAME`、`FLYNEXT_DOCKER_*` | 仅在独立私有 Docker 配置中生成，用于隔离项目名称、数据库凭据、实例身份和应用端口。 |
 
 不要提交 `.env`、数据库凭据、签名密钥、Cloudinary 密钥或供应商 API 密钥。`.env.example` 中只有占位值，不是可用凭据。
 
@@ -180,9 +184,11 @@ FlyNext 的 AFS 客户端契约支持两种按请求选择的后端：
 
 ## 部署
 
-将 Next.js 应用部署到兼容的托管平台。在托管平台的密钥管理功能中配置环境变量，使用专用 PostgreSQL 数据库，并通过受控发布流程应用已审阅的 Prisma 迁移。不要对线上数据运行破坏性 seed 或测试夹具。
+[在线演示](https://flynext-puce.vercel.app) 使用 Vercel、Node.js 24 和内置 AFS。Git 集成将 `main` 部署到生产环境，并创建分支预览。按环境分别配置密钥、使用专用 PostgreSQL 目标，并通过受控发布流程应用已审阅的迁移。不要对线上数据运行破坏性 Seed 或测试夹具。
 
 构建与发布步骤见[部署指南](docs/DEPLOYMENT.md)。
+
+持续维护的文档有四个入口：本 README 介绍架构与安装，[开发指南](docs/DEVELOPMENT.md) 介绍测试与 CI，[部署指南](docs/DEPLOYMENT.md) 介绍托管发布与迁移，[Docker 指南](docs/DOCKER.md) 介绍本地容器。供应商维护者可另外阅读 [AFS 加固说明](afs/README.md)。
 
 ## 项目结构
 

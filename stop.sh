@@ -1,3 +1,4 @@
 #!/bin/bash
-# Stop and remove containers, networks, and volumes defined in docker-compose.yml.
-docker-compose down
+# Remove the configured demo containers and network while preserving volumes.
+set -euo pipefail
+docker compose --env-file .env.docker.local down
