@@ -21,6 +21,7 @@ RUN npx prisma generate
 
 # Build application
 RUN npm run build
+RUN npm run build:server
 
 # Production image
 FROM base AS runner
@@ -41,6 +42,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/dist ./dist
+COPY --from=builder --chown=nextjs:nodejs /app/scripts/docker ./scripts/docker
 
 # Use the non-root user
 USER nextjs

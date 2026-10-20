@@ -52,6 +52,7 @@ import { availabilityHorizon } from "../lib/api/validation";
 import { hashPassword } from "../lib/auth";
 import { firstLine, splitSqlStatements } from "./sql-script";
 import { assertDisposableDatabase } from "../lib/database-safety";
+import { assertDockerDatabaseIdentity } from "../lib/docker-database-safety";
 import {
 	readSeedJson,
 	readSeedSql,
@@ -231,7 +232,16 @@ async function seedRoomAvailability(): Promise<number> {
 
 async function main(): Promise<void> {
 	// Before the first query, for both tsx and compiled seed:prod.
-	assertDisposableDatabase(process.env, "seed");
+	if (process.env.FLYNEXT_DOCKER_INSTANCE_ID) {
+		await assertDockerDatabaseIdentity(prisma, process.env, true);
+		await prisma.$transaction([
+			prisma.afsOfflineBooking.deleteMany(),
+			prisma.bookingRequest.deleteMany(),
+			prisma.rateLimitCounter.deleteMany(),
+		]);
+	} else {
+		assertDisposableDatabase(process.env, "seed");
+	}
 	// Airports reference cities, so children are cleared first.
 	await prisma.$transaction([
 		prisma.airport.deleteMany(),
@@ -256,6 +266,10 @@ async function main(): Promise<void> {
 	// Without this, the demo room types exist but cannot be booked for any date.
 	const nights = await seedRoomAvailability();
 	console.log(`Materialised ${nights} room-availability night(s).`);
+	if (process.env.FLYNEXT_DOCKER_INSTANCE_ID) {
+		const { seedDockerJourney } = await import("./seed-docker-journey");
+		await seedDockerJourney(prisma);
+	}
 }
 
 main()

@@ -9,6 +9,7 @@ export const unitTestFiles = [
 	"tests/upload.folder.test.ts",
 	"tests/flights.directions.test.ts",
 	"tests/database-safety.test.ts",
+	"tests/docker-database-safety.test.ts",
 	"tests/auth.duration.test.ts",
 	"tests/session.client.test.ts",
 	"tests/upload.security.test.ts",

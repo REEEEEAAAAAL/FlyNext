@@ -156,7 +156,7 @@ npm run dev
 | `npm run build` | 创建 Next.js 生产构建。 |
 | `npm audit --audit-level=high` | 检查高危及以上级别的依赖安全公告。 |
 
-默认 `npm test` 工作流不会读取环境文件或连接数据库。集成和 E2E 测试使用 `.env.test` 及独立登记的 Neon `flynext_test` 目标，并可能迁移数据库和清理合成测试数据。必须依次运行 `test:db:verify`、`test:integration` 和 `test:e2e`，不能指向开发库或生产库。E2E 在构建后以单 worker 模式启动自己的 3210 端口生产服务器。运行数据库测试前请阅读[开发指南](docs/DEVELOPMENT.md)。独立 Docker 镜像已通过构建、启动和未登录 HTTP 冒烟检查，检查期间未连接数据库；Compose 数据库和多服务验收仍待完成。
+默认 `npm test` 工作流不会读取环境文件或连接数据库。集成和 E2E 测试使用 `.env.test` 及独立登记的 Neon `flynext_test` 目标，并可能迁移数据库和清理合成测试数据。必须依次运行 `test:db:verify`、`test:integration` 和 `test:e2e`，不能指向开发库或生产库。E2E 在构建后以单 worker 模式启动自己的 3210 端口生产服务器。运行数据库测试前请阅读[开发指南](docs/DEVELOPMENT.md)。仅依赖 Docker Desktop / Compose 的完整应用与独立 PostgreSQL 部署，请参阅 [Docker 使用指南](docs/DOCKER.md)。指南包含独立凭据生成、身份核验、首次完整演示数据初始化、持久化、显式重置和容器业务烟测。默认使用内置 AFS；可选独立 AFS 联调为 Deferred。
 
 数据库校验命令会验证目标确实是已登记的测试库；仅凭库名带有 `_test` 后缀不足以证明安全。测试套件拒绝生产库和未登记的远程库，并在破坏性操作前后再次核验数据库身份。不要绕过项目运行器，也不要让 E2E 复用已运行的服务器。CI 数据库测试需要另行登记的独立端点和受限角色；复制开发者的 `.env.test` 并不能完成 CI 配置。
 
