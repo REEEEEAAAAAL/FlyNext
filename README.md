@@ -2,6 +2,8 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
+[Live demo](https://flynext-puce.vercel.app)
+
 FlyNext is a full-stack travel booking application built as a software engineering portfolio project. It brings flight reservations, hotel stays, itineraries, account management, and hotel-owner workflows into one responsive application. The interface is in English and supports light and dark themes.
 
 The project demonstrates how browser workflows connect to authenticated APIs, transactional PostgreSQL writes, an interchangeable flight provider, and media and receipt services. Flight and hotel records are synthetic demo data. Checkout is a DEMO flow: it does not authorize or transfer money, and the application does not collect real payment-card or passport details.
@@ -40,7 +42,7 @@ Responsive workflows support light and dark themes across desktop, tablet, and m
 
 | Technology | Use |
 | --- | --- |
-| Next.js 15 App Router and React 19 | Server-rendered web application and API Route Handlers. |
+| Node.js 24, Next.js 15.5.28 App Router and React 19.0.9 | Application runtime, server-rendered web application and API Route Handlers. |
 | TypeScript 5 | Strict application, API, and test contracts. |
 | Tailwind CSS 4 | Responsive styling and light/dark presentation. |
 | PostgreSQL and Prisma 6.3.1 | Relational persistence, schema migrations, transactions, and generated client. |
@@ -73,7 +75,7 @@ The `app/` layer renders pages and owns HTTP entry points. Shared API concerns l
 - **Keep reservation changes consistent.** Database transactions group related reservation, inventory, itinerary, and checkout writes. Flight operations cross a provider boundary, so a failed local write triggers a compensating provider cancellation; unreconciled outcomes are surfaced for operator attention rather than reported as a successful local booking.
 - **Make retries safe.** Write endpoints that support idempotent booking or checkout require an `Idempotency-Key`. The key is scoped to the operation and request fingerprint; replaying the same request returns the stored outcome, while reusing a key for different input is a conflict.
 - **Protect sessions and guest data.** Access tokens are kept in browser memory. Refresh credentials use an HttpOnly cookie and rotate through server-side refresh-session records. Owner-only guest reservations are returned through ownership-checked endpoints; public hotel and room responses do not expose guest bookings. Sensitive responses are not shared through caches.
-- **Use one API error boundary.** Route Handlers use `withRoute` and typed `ApiError` values to return stable JSON errors while keeping internal database details in server logs. Rate-limit responses include `Retry-After`. Limits are process-local and should be treated as burst protection, not a distributed quota.
+- **Use one API error boundary.** Route Handlers use `withRoute` and typed `ApiError` values to return stable JSON errors while keeping internal database details in server logs. Rate-limit responses include `Retry-After`. Deployed authentication and write budgets use atomic PostgreSQL counters across workers; public read limits use bounded process memory.
 - **Separate test data from business data.** Database integration and E2E runners validate the registered test target before migration or cleanup and re-check identity at write boundaries. The test database is distinct from development and production targets; its destructive fixtures must never be pointed at a business database.
 - **Treat provider and user input as untrusted.** Remote AFS payloads are structurally validated before use. Uploaded images are validated before storage. DEMO checkout rejects real card and passport details.
 
@@ -113,6 +115,8 @@ npm run prisma:generate
 
 `prisma:migrate` runs `prisma migrate deploy`; it applies pending migrations and does not reset the database. For an existing database, inspect `npx prisma migrate status` first and confirm the database identity and migration history before applying anything. Do not use a demo/reset seed as a migration step.
 
+The application has eight migrations through `20261020091000_external_recovery`, applied to the current development, developer-test, CI-test, preview and production targets. See the [migration inventory](docs/DEPLOYMENT.md#migration-inventory) for their responsibilities and history checks. The optional standalone AFS maintains its own separate migration history.
+
 The application needs city and airport reference rows for location workflows. If your dedicated development database has not been initialized, `npm run seed:reference` adds reference content in a transaction without deleting rows. This script also creates reference hotels, room types, nightly availability, and may create or update its configured demo owner account; review `SEED_OWNER_EMAIL` and `SEED_OWNER_PASSWORD` behavior before running it. Run it only against the intended development database. It is a database write, not a routine check. See [Development guide](docs/DEVELOPMENT.md) for the project's database safety rules. For hosting and release guidance, see the [deployment guide](docs/DEPLOYMENT.md).
 
 Start the application:
@@ -135,7 +139,7 @@ Open `http://localhost:3000`. For the complete configuration reference, see [Env
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Cloudinary upload credentials. `CLOUDINARY_URL` is an alternative combined setting; `CLOUDINARY_FOLDER` selects the asset folder. |
 | `AFS_BASE_URL`, `AFS_API_KEY`, `AFS_MOCK` | Select and authenticate a remote AFS service, or force the built-in provider. See [Flight provider](#flight-provider). |
 | `AFS_LOCAL_AGENCY`, `AFS_SEED_DAYS`, `AFS_LOCAL_API_KEY`, `AFS_DOCKER_*` | Separate generated Docker configuration for the optional AFS service, its synthetic schedule and isolated database; unnecessary for the built-in provider. See the [Docker guide](docs/DOCKER.md). |
-| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Used by the optional Compose database configuration, not required when connecting to an existing PostgreSQL service. |
+| `COMPOSE_PROJECT_NAME`, `FLYNEXT_DOCKER_*` | Generated only in the separate private Docker configuration; identifies the isolated project, database credentials, instance and app port. |
 
 Never commit `.env`, database credentials, signing secrets, Cloudinary keys, or provider API keys. `.env.example` contains placeholders, not working credentials.
 
@@ -180,9 +184,11 @@ The optional local Compose integration pins [upstream commit b3eee4e](https://gi
 
 ## Deployment
 
-Deploy the Next.js application to a compatible host. Configure the required environment variables in the host's secret manager, use a dedicated PostgreSQL database, and apply reviewed Prisma migrations through a controlled release process. Do not run destructive seeds or test fixtures against live data.
+The [hosted demo](https://flynext-puce.vercel.app) runs on Vercel with Node.js 24 and the built-in AFS. Git integration deploys `main` to production and creates branch previews. Configure secrets per environment, use dedicated PostgreSQL targets, and apply reviewed migrations through a controlled release process. Do not run destructive seeds or test fixtures against live data.
 
 See the [deployment guide](docs/DEPLOYMENT.md) for build and release steps.
+
+The maintained documentation has four entry points: this README for architecture and setup, [Development](docs/DEVELOPMENT.md) for testing and CI, [Deployment](docs/DEPLOYMENT.md) for hosted releases and migrations, and [Docker](docs/DOCKER.md) for local containers. Provider maintainers can additionally read [AFS hardening](afs/README.md).
 
 ## Project structure
 

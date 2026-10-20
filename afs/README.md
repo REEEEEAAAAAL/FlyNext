@@ -1,5 +1,7 @@
 # Standalone AFS hardening
 
+This directory maintains the optional private Docker provider. FlyNext's hosted production demo uses the built-in provider. Setup, service isolation and operational commands live in the [Docker guide](../docs/DOCKER.md); the application and provider have separate databases and migration histories.
+
 The optional Docker image fetches upstream `Kianoosh76/afs` at `b3eee4edd597bfc0545ff99fbbf4e2c0c065b222`. `prepare.mjs` checks the original files against `source-hashes.json`, adds the nullable booking operation fields to Prisma, and copies `hardened/` over that checkout. A mismatched source fails the build.
 
 `hardened/package-lock.json` is authoritative. Node 24 runs `npm ci`, Prisma generation and a complete Next.js production build, then prunes development packages. Runtime versions are Next.js 15.5.28, React/React DOM 19.0.9, Prisma/Client 6.3.1, Lodash 4.18.1 and PostCSS 8.5.23. Prisma Studio is not needed by the server and is excluded.

@@ -22,7 +22,7 @@ This creates `.env.docker.local` with a unique `flynext-local-...` Compose proje
 
 The app is available only on `127.0.0.1:3300`. If occupied, change `FLYNEXT_DOCKER_PORT` in this Docker configuration before starting. PostgreSQL has no host port. Do not reuse an existing Compose project name, set external volume names, or attach existing database volumes. Shell variables take precedence over Compose env files: clear conflicting `COMPOSE_PROJECT_NAME` / `FLYNEXT_DOCKER_*` overrides before using these commands.
 
-On Windows machines configured for Clash, use the machine's dedicated Docker Desktop (Clash) launcher and preserve TUN, system proxy and WSL autoProxy. Confirm both Client and Server with `docker version`. If `docker compose` is unavailable but Docker Desktop is installed, use its `resources/cli-plugins/docker-compose.exe` executable with the same arguments.
+Confirm both Client and Server with `docker version` before starting. If the host uses a proxy, preserve its working Docker configuration. If `docker compose` is unavailable but Docker Desktop is installed, use its `resources/cli-plugins/docker-compose.exe` executable with the same arguments.
 
 ## First build and startup
 
@@ -38,7 +38,7 @@ Compose waits for PostgreSQL health. The non-root application startup then retri
 
 `DATABASE_URL` is constructed with the fixed `postgres:5432`, `flynext_docker_demo` database and non-superuser `flynext_docker` role. An inherited `DATABASE_URL`, Neon credentials, ordinary `.env`, `.env.test`, AFS URL or Cloudinary settings are not injected. The image excludes local environment files and uploads. PostgreSQL bootstrap creates a protected instance marker and records its physical cluster ID. Maintenance verifies both against the live server, database, role and container DNS address before migrations or seed operations. Existing local/CI database safety runners are unchanged.
 
-Normal startup applies pending migrations and preserves all existing demo accounts, reservations, orders and inventory. Migrations still need review when updating the code. The reference seed is non-destructive and is not a substitute for the full initial demo seed.
+Normal startup applies pending migrations and preserves all existing demo accounts, reservations, orders and inventory. FlyNext currently has eight migrations through `20261020091000_external_recovery`; see the [migration inventory](DEPLOYMENT.md#migration-inventory). Migrations still need review when updating the code. The reference seed is non-destructive and is not a substitute for the full initial demo seed.
 
 ## Daily operation and diagnostics
 
@@ -116,7 +116,7 @@ docker compose --env-file .env.docker.afs.local -f docker-compose.yml -f docker-
 
 Open [the remote demo](http://localhost:3301). Both the `afs` profile and `docker-compose.afs.yml` are intentional: the profile enables the provider services, and the override switches FlyNext to `AFS_MOCK=false`, `AFS_BASE_URL=http://afs:3000` and the generated key. A profile alone does not change FlyNext's provider. Keep the same files and flags for subsequent remote commands. Clear inherited AFS variables as well as Compose/FlyNext variables before running; do not print expanded configuration or container environments.
 
-The image fetches and verifies upstream commit [b3eee4edd597bfc0545ff99fbbf4e2c0c065b222](https://github.com/Kianoosh76/afs/commit/b3eee4edd597bfc0545ff99fbbf4e2c0c065b222) using a detached SHA checkout. Node 24 applies `afs/prepare.mjs`, verifies SHA-256 hashes of the original files, then copies the versioned `afs/hardened` overlay and its complete npm lockfile. The overlay pins Next.js 15.5.28, React/React DOM 19.0.9, Prisma/Client 6.3.1 and Lodash 4.18.1, with PostCSS 8.5.23. Unused Prisma Studio and obsolete Next.js type/lint packages are removed. `npm ci`, Prisma generation, production build and pruning run at image build time; the final image contains the lockfile. No runtime dependency edits are required.
+The image uses a detached checkout of the pinned upstream revision, verifies its original SHA-256 source hashes, and applies the versioned hardening overlay and lockfile. Node 24 installs, generates Prisma Client, builds and prunes dependencies during the image build. See [AFS hardening](../afs/README.md) for the source pin, dependency versions, protocol and maintenance rules.
 
 After building the AFS image, run the read-only topology check for the selected local project. It validates service composition, loopback-only app binding, isolated database volumes and credentials, and the AFS image revision label without printing expanded configuration:
 
