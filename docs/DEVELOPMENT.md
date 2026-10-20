@@ -41,4 +41,19 @@ If installation, Prisma generation, or builds fail because of filesystem permiss
 
 ## Complete local Docker environment
 
-For a deployment using only Docker Desktop / Compose, see the [Docker guide](DOCKER.md). Generate a separate `.env.docker.local`; do not reuse business environment files or redirect the Neon test runner to Compose. The dedicated Docker smoke verifies the isolated database identity before writes and uses the built-in AFS.
+For a deployment using only Docker Desktop / Compose, see the [Docker guide](DOCKER.md). Generate a separate `.env.docker.local`; do not reuse business environment files or redirect the Neon test runner to Compose. The dedicated Docker smoke verifies the isolated database identity before writes. Built-in AFS remains the default, including production. The Docker guide documents the optional private HTTP AFS profile, versioned source/dependency hardening, independent PostgreSQL, durable recovery, concurrency/fault fixtures and persistence checks. Never switch an existing ticket database between providers or use its local-only reset in remote mode.
+
+## Dedicated loopback test alternative
+
+For local testing without a remote service, install PostgreSQL CLI tools on PATH (or set FLYNEXT_PG_BIN to their bin directory), then use PowerShell:
+
+```powershell
+$env:FLYNEXT_TEST_ENV = 'local'
+npm run test:db:start
+npm run test:db:verify
+npm run test:integration
+npm run build
+npm run test:e2e
+```
+
+The helper owns only .local-test-db and .env.test.local. It creates a uniquely marked flynext_test database on loopback port 55432 and verifies its identity before migration or cleanup. Existing configuration is preserved. Do not redirect this runner to Compose or a business database. Test and Next.js builds must run sequentially when sharing .next.

@@ -19,13 +19,13 @@ import { enforceRateLimit } from "@/lib/api/rate-limit";
  */
 
 import { requireAuth } from "@/lib/api/auth";
-import { conflict, forbidden, notFound } from "@/lib/api/errors";
+import { forbidden } from "@/lib/api/errors";
 import { withRoute } from "@/lib/api/handler";
 import { jsonMessage, jsonOk } from "@/lib/api/response";
 import { parseRouteId } from "@/lib/api/validation";
 import { lockTraveller } from "@/lib/booking-locks";
 import { DEFAULT_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
-import { cancelFlightReservation, cancelHotelReservation } from "@/lib/reservations";
+import { resumeItineraryCancellation } from "@/lib/reservations";
 import type { ItineraryDetail } from "@/types";
 
 /** Columns the itinerary client reads, shared by both handlers. */
@@ -93,19 +93,7 @@ export const DELETE = withRoute<{ itineraryId: string }>(
 		}
 
 		if (itinerary.status === "CANCELLED") return jsonMessage("Itinerary and all related bookings canceled successfully", 200);
-		if (itinerary.flight !== null && itinerary.flight.status === "CONFIRMED") {
-			await cancelFlightReservation(itinerary.flight.id);
-		}
-		if (itinerary.hotel !== null && itinerary.hotel.status === "CONFIRMED") {
-			await cancelHotelReservation(itinerary.hotel.id);
-		}
-
-		await prisma.$transaction(async tx => {
-			await lockTraveller(tx, userId);
-			const current = await tx.itinerary.findUniqueOrThrow({ where: { id: itineraryId }, include: { flight: true, hotel: true } });
-			if (current.flight?.status === "CONFIRMED" || current.hotel?.status === "CONFIRMED") throw conflict("Some reservations still require cancellation; retry this request");
-			await tx.itinerary.update({ where: { id: itineraryId }, data: { status: "CANCELLED", totalPrice: 0, cancellationRequested: false } });
-		}, DEFAULT_TRANSACTION_OPTIONS);
+		await resumeItineraryCancellation(itineraryId, userId);
 
 		return jsonMessage(
 			"Itinerary and all related bookings canceled successfully",

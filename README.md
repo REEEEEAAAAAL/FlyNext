@@ -134,7 +134,7 @@ Open `http://localhost:3000`. For the complete configuration reference, see [Env
 | `JWT_REFRESH_TOKEN_EXPIRY_TIME` | Refresh-cookie lifetime, for example `7d`. |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Cloudinary upload credentials. `CLOUDINARY_URL` is an alternative combined setting; `CLOUDINARY_FOLDER` selects the asset folder. |
 | `AFS_BASE_URL`, `AFS_API_KEY`, `AFS_MOCK` | Select and authenticate a remote AFS service, or force the built-in provider. See [Flight provider](#flight-provider). |
-| `AFS_LOCAL_AGENCY`, `AFS_SEED_DAYS` | Settings for the separately run AFS container's local data setup; they are not required by the built-in provider. |
+| `AFS_LOCAL_AGENCY`, `AFS_SEED_DAYS`, `AFS_LOCAL_API_KEY`, `AFS_DOCKER_*` | Separate generated Docker configuration for the optional AFS service, its synthetic schedule and isolated database; unnecessary for the built-in provider. See the [Docker guide](docs/DOCKER.md). |
 | `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Used by the optional Compose database configuration, not required when connecting to an existing PostgreSQL service. |
 
 Never commit `.env`, database credentials, signing secrets, Cloudinary keys, or provider API keys. `.env.example` contains placeholders, not working credentials.
@@ -156,7 +156,7 @@ Never commit `.env`, database credentials, signing secrets, Cloudinary keys, or 
 | `npm run build` | Create the Next.js production build. |
 | `npm audit --audit-level=high` | Check installed dependency advisories at high severity and above. |
 
-The default `npm test` workflow does not read environment files or connect to a database. Integration and E2E use `.env.test` and the separately enrolled Neon `flynext_test` target; they may migrate and clear synthetic test data. Run `test:db:verify`, `test:integration`, and `test:e2e` sequentially, never against a development or production database. E2E starts its own single-worker production server on port 3210 after a build. Read the [Development guide](docs/DEVELOPMENT.md) before running database tests. For a complete local application and isolated PostgreSQL using only Docker Desktop / Compose, follow the [Docker guide](docs/DOCKER.md). It includes separate generated credentials, guarded first-time demo initialization, persistent volumes, an explicit reset command and container business smoke tests. The default uses the built-in AFS; the optional standalone AFS profile is deferred.
+The default `npm test` workflow does not read environment files or connect to a database. Integration and E2E use a verified disposable loopback or separately enrolled Neon `flynext_test` target; they may migrate and clear synthetic test data. Run `test:db:verify`, `test:integration`, and `test:e2e` sequentially, never against a development or production database. E2E starts its own single-worker production server on port 3210 after a build. Read the [Development guide](docs/DEVELOPMENT.md) before running database tests. For a complete local application and isolated PostgreSQL using only Docker Desktop / Compose, follow the [Docker guide](docs/DOCKER.md). It includes separate generated credentials, guarded first-time demo initialization, persistent volumes, an explicit reset command and container business smoke tests. The default, including production, uses the built-in AFS. The optional four-service AFS profile uses a hardened private provider; its isolated configuration, recovery, concurrency checks and persistence commands are in the Docker guide.
 
 The database verification command proves the test target is the enrolled test database; a `_test` name alone is not sufficient. The suite refuses production and unregistered remote targets and rechecks database identity around destructive steps. Do not bypass the repository runners or reuse a running server for E2E. CI database tests require their own separately registered endpoint and restricted role; they are not configured merely by copying a developer's `.env.test`.
 
@@ -174,9 +174,9 @@ The database verification command proves the test target is the enrolled test da
 FlyNext implements one AFS client contract with two per-request back ends:
 
 - **Built-in provider:** selected by default when `AFS_BASE_URL` is empty or not a usable service URL. It runs in-process, supports the search and ticket lifecycle, and persists offline bookings in the application database when configured. It makes local development and deployments possible without a separate flight-service deployment; its schedule and tickets are demo data.
-- **Remote AFS:** set `AFS_BASE_URL` to a reachable HTTP(S) AFS service and provide `AFS_API_KEY`. A usable `AFS_BASE_URL` selects remote mode unless `AFS_MOCK=true`; `AFS_MOCK=false` also selects remote mode when that URL is usable. An empty or placeholder URL selects the built-in provider. Remote payloads are validated before they enter application logic.
+- **Remote AFS:** set `AFS_BASE_URL` to a reachable HTTP(S) AFS service and provide `AFS_API_KEY`. A usable `AFS_BASE_URL` selects remote mode unless `AFS_MOCK=true`; `AFS_MOCK=false` requires remote mode and fails if its URL is missing or unusable. Without that explicit flag, an empty or placeholder URL selects the built-in provider. Remote payloads are validated before they enter application logic.
 
-The remote provider is an integration point, not a claim that an external AFS service is currently deployed or verified. See the [AFS project](https://github.com/Kianoosh76/afs) for its service contract.
+The optional local Compose integration pins [upstream commit b3eee4e](https://github.com/Kianoosh76/afs/commit/b3eee4edd597bfc0545ff99fbbf4e2c0c065b222) and applies the versioned `afs/hardened` overlay with its own lockfile: Next.js 15.5.28, React 19.0.9 and Prisma 6.3.1. Atomic seat accounting, agency-scoped ticket lookup, full references and durable idempotency protect the private provider. FlyNext persists recovery state and reconciles interrupted bookings and cancellations in Docker. See the [Docker guide](docs/DOCKER.md#optional-standalone-afs).
 
 ## Deployment
 
@@ -210,6 +210,6 @@ These screenshots use synthetic application data. They are product captures, not
 ## Limitations and license
 
 - Checkout is demonstrative only. It does not process real payments, refunds, card numbers, or passport data.
-- Built-in AFS schedules and ticket inventory are synthetic. A remote AFS service and Cloudinary credentials require separate configuration; their live integration is not claimed as verified here.
+- AFS schedules and ticket inventory are synthetic. Local Compose supports the built-in provider and an optional private AFS service. Real airline ticketing and public cloud AFS operations are outside this local demo. Cloudinary is an optional image storage provider.
 - Automated database tests require a separate, isolated test database. See the [development guide](docs/DEVELOPMENT.md) for test setup.
 - This is an educational and portfolio project. No formal open-source license is declared; ask the repository owner before commercial reuse.

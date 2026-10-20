@@ -259,8 +259,8 @@ describe("AFS mode selection", () => {
 		process.env.AFS_BASE_URL = "https://afs.invalid";
 		// The remote address is missing, so there is nothing to call. This has to
 		// stay an error path rather than becoming invented flight data.
-		expect(resolveAfsMode().mode).toBe("offline");
-		expect(isAfsOffline()).toBe(true);
+		expect(resolveAfsMode().mode).toBe("remote");
+		expect(isAfsOffline()).toBe(false);
 	});
 });
 

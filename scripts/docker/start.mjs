@@ -1,9 +1,10 @@
 import { PrismaClient } from '@prisma/client';
 import { spawnSync, spawn } from 'node:child_process';
-import { assertDockerDatabaseIdentity, assertDockerDatabaseTarget } from '../../dist/lib/docker-database-safety.js';
+import { assertDockerDatabaseIdentity, assertDockerDatabaseTarget, assertDockerOperationMode } from '../../dist/lib/docker-database-safety.js';
 
 const action = process.argv[2] ?? 'start';
 if (!['start', 'reset', 'verify', 'reference'].includes(action)) throw new Error('Unknown Docker operation.');
+assertDockerOperationMode(process.env, action);
 if (action === 'reference' && !process.env.SEED_OWNER_PASSWORD) throw new Error('Reference initialization requires an explicit SEED_OWNER_PASSWORD; credentials must not be printed.');
 assertDockerDatabaseTarget(process.env);
 const db = new PrismaClient();
@@ -44,7 +45,9 @@ try {
 } finally { await db.$disconnect(); }
 
 if (!process.exitCode && action === 'start') {
+  const recovery = spawn('node', ['scripts/docker/reconcile.mjs'], { stdio: 'inherit' });
   const server = spawn('node', ['node_modules/next/dist/bin/next', 'start', '--hostname', '0.0.0.0'], { stdio: 'inherit' });
-  for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => server.kill(signal));
-  server.on('exit', code => { process.exitCode = code ?? 1; });
+  for (const signal of ['SIGTERM', 'SIGINT']) process.on(signal, () => { server.kill(signal); recovery.kill(signal); });
+  server.on('exit', code => { recovery.kill(); process.exitCode = code ?? 1; });
+  recovery.on('exit', () => server.kill());
 }
