@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import type { Prisma } from "@prisma/client";
-import { ApiError, badRequest, conflict } from "./errors";
+import { ApiError, ProviderBookingRejected, badRequest, conflict } from "./errors";
 import { DEFAULT_TRANSACTION_OPTIONS, prisma } from "../prisma";
 
 function canonical(value: unknown): string {
@@ -39,7 +39,7 @@ export async function idempotentWrite(request: Request, userId: number, scope: s
 }
 
 // External calls run outside transactions. An unresolved call is never blindly repeated.
-export async function idempotentExternal(request: Request, userId: number, scope: string, body: unknown, work: (operationId?: string) => Promise<Result>, recover?: (operationId: string) => Promise<Result | null>): Promise<Response> {
+export async function idempotentExternal(request: Request, userId: number, scope: string, body: unknown, work: (operationId?: string) => Promise<Result>, recover?: (operationId: string) => Promise<Result | null>, recoveryData?: Prisma.InputJsonValue): Promise<Response> {
 	const input = identity(request, userId, scope, body);
 	const claim = await prisma.$transaction(async tx => {
 		await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`request:${userId}:${input.key}`}, 0))`;
@@ -48,7 +48,7 @@ export async function idempotentExternal(request: Request, userId: number, scope
 			if (stored.scope !== scope || stored.requestHash !== input.requestHash) throw conflict("Idempotency-Key was already used for a different request");
 			return { stored, fresh: false };
 		}
-		return { stored: await tx.bookingRequest.create({ data: { ...input, key: input.key! } }), fresh: true };
+		return { stored: await tx.bookingRequest.create({ data: { ...input, key: input.key!, recovery: recoveryData } }), fresh: true };
 	}, DEFAULT_TRANSACTION_OPTIONS);
 	if (!claim.fresh) {
 		let stored = claim.stored;
@@ -66,7 +66,7 @@ export async function idempotentExternal(request: Request, userId: number, scope
 	let result: Result;
 	try { result = await work(claim.stored.id); }
 	catch (error) {
-		if (!(error instanceof ApiError) || (error.status >= 500 && !error.message.includes("ticket has been released"))) throw error;
+		if (!(error instanceof ApiError) || (error.status >= 500 && !(error instanceof ProviderBookingRejected) && !error.message.includes("ticket has been released"))) throw error;
 		result = { status: error.status, body: { error: error.message } };
 	}
 	const committed = await prisma.bookingRequest.findUniqueOrThrow({ where: { id: claim.stored.id } });

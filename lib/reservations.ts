@@ -502,16 +502,8 @@ export type CancelFlightCall = (
 /**
  * The key AFS authorises retrieval and cancellation with.
  *
- * This is the booking's own id, not the passenger-facing
- * `bookingReference`. The reference is only the first six characters of the id,
- * and it is not a key AFS accepts: `GET /api/bookings/retrieve` and
- * `POST /api/bookings/cancel` resolve a booking by its id. Storing the short
- * reference produced a local row that verified and cancelled as
- * "Booking not found", because the identifier written here is exactly what
- * {@link cancelFlightReservation} sends back upstream.
- *
- * Falls back to `bookingReference` for a provider that reports no id, which
- * keeps a response without `id` bookable rather than unresolvable.
+ * Prefer a full identifier when supplied. The pinned upstream omits it and
+ * accepts its six-character reference as a case-insensitive identifier prefix.
  */
 export function afsBookingKey(booking: {
 	id?: string;
@@ -540,38 +532,8 @@ export interface FlightBookingOptions {
 	returnLegCount?: number;
 }
 
-/**
- * Book with AFS and mirror the result locally.
- *
- * AFS is the system of record: it issues the ticket, and the local
- * `FlightReservation` row exists so that booking history, cancellation and the
- * itinerary price have something to point at. That ordering creates one failure
- * mode worth handling explicitly — the ticket exists and the local row does not —
- * which is what the compensation below is for.
- *
- * The steps are:
- *
- * 1. Validate the AFS response. An empty leg list means AFS accepted the booking
- *    but returned nothing usable, so it is compensated the same way a database
- *    failure is: the alternative is an unusable ticket the passenger cannot see.
- * 2. Write the local row, keyed by {@link afsBookingKey} — the booking's AFS id.
- *    The legs are first grouped into the directions flown, because the provider
- *    returns one flat list whether the booking is a one-way with a connection or
- *    a round trip; see {@link splitFlightDirections}.
- * 3. If step 2 fails, ask AFS to cancel the booking just created, so the two
- *    systems agree again.
- *
- * Compensation is best effort by nature: it is a second call to the dependency
- * that just failed. When it does not succeed the booking is orphaned — paid for
- * and ticketed upstream, invisible locally — and that is a state no amount of
- * retrying inside this request can repair. It is therefore recorded as an alert
- * carrying every identifier needed to reconcile it by hand
- * (`flight.booking.orphaned`), and the caller receives `502` rather than a
- * success for a booking the application cannot show them.
- *
- * @throws ApiError `502` when AFS fails, returns no legs, or the local write could
- *   not be completed.
- */
+// Persist the provider operation before HTTP, then commit the mirror and response together.
+// Failed local writes enter durable compensation and are retried by reconciliation.
 export async function createFlightReservation(
 	payload: AfsCreateBookingRequest,
 	userId: number,
@@ -579,7 +541,12 @@ export async function createFlightReservation(
 ): Promise<{ booking: AfsBooking; reservationId: number }> {
 	const book = options.createBooking ?? ((body: AfsCreateBookingRequest) => createBooking(body, options.operationId));
 	const compensate = options.cancelFlight ?? cancelFlight;
-	payload = { ...payload, passportNumber: `DEMO-${randomUUID()}` };
+	payload = { ...payload, passportNumber: `DEMO-${options.operationId ?? randomUUID()}` };
+	if (options.operationId && !options.recoverOnly) {
+		await prisma.bookingRequest.update({ where: { id: options.operationId }, data: {
+			recovery: { payload: { ...payload }, returnLegCount: options.returnLegCount ?? null },
+		} });
+	}
 
 	// Step 1: the upstream booking. A failure here leaves nothing to unwind.
 	const booking = await book(payload);
@@ -800,6 +767,20 @@ export async function ticketedLastName(reservation: { passengerLastName: string 
 		if (original?.lastName) return original.lastName;
 	}
 	throw conflict("Historical passenger identity is unavailable; this booking requires reconciliation");
+}
+
+export async function resumeItineraryCancellation(itineraryId: number, userId: number): Promise<void> {
+	const itinerary = await prisma.itinerary.findFirstOrThrow({ where: { id: itineraryId, userId }, include: { flight: true, hotel: true } });
+	if (itinerary.status === "CANCELLED") return;
+	if (!itinerary.cancellationRequested) throw conflict("Itinerary cancellation has not been requested");
+	if (itinerary.flight?.status === "CONFIRMED") await cancelFlightReservation(itinerary.flight.id);
+	if (itinerary.hotel?.status === "CONFIRMED") await cancelHotelReservation(itinerary.hotel.id);
+	await prisma.$transaction(async tx => {
+		await lockTraveller(tx, userId);
+		const current = await tx.itinerary.findUniqueOrThrow({ where: { id: itineraryId }, include: { flight: true, hotel: true } });
+		if (current.flight?.status === "CONFIRMED" || current.hotel?.status === "CONFIRMED") throw conflict("Some reservations still require cancellation; retry this request");
+		await tx.itinerary.update({ where: { id: itineraryId }, data: { status: "CANCELLED", totalPrice: 0, cancellationRequested: false } });
+	}, DEFAULT_TRANSACTION_OPTIONS);
 }
 
 export function assertAllLegsScheduled(verification: { status: string; flights: readonly AfsFlight[] }): void {

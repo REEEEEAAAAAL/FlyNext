@@ -42,6 +42,10 @@ export class ApiError extends Error {
 	}
 }
 
+export class ProviderBookingRejected extends ApiError {
+	constructor() { super(502, "The flight provider rejected this booking"); }
+}
+
 /** `400 Bad Request` — the caller sent something unusable. */
 export function badRequest(message: string, details?: string): ApiError {
 	return new ApiError(400, message, details);

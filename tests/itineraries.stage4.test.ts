@@ -9,6 +9,7 @@ import { addDays, createHotel, createRoomType, createUser, tomorrow, toDateParam
 import { callRoute, readJson, tokenFor } from "#support/requests";
 import * as afs from "@/lib/afs-client";
 import { createFlightReservation, cancelFlightReservation } from "@/lib/reservations";
+import { reconcileFlights } from "@/lib/afs-recovery";
 
 beforeEach(resetDatabase);
 afterAll(disconnect);
@@ -25,6 +26,21 @@ async function fixture() {
 }
 
 describe("stage 4 itinerary state and concurrency", () => {
+	it("automatically resumes an interrupted combined cancellation without releasing hotel nights twice", async () => {
+		const f = await fixture();
+		const date = new Date(Date.now() + 14 * 86400000).toISOString().slice(0, 10);
+		const leg = (await afs.searchFlights({ origin: "YYZ", destination: "LHR", date }))[0].flights[0];
+		const flight = await createFlightReservation({ firstName: "Demo", lastName: "Traveller", email: "recovery@example.invalid", passportNumber: "DEMO-PASSENGER", flightIds: [leg.id] }, f.user.id);
+		const trip = await prisma.itinerary.create({ data: { userId: f.user.id, status: "CONFIRMED", totalPrice: 400, cardNumber: "", cardExpiry: "", cancellationRequested: true,
+			flight: { connect: { id: flight.reservationId } }, hotel: { connect: { id: f.reservation.id } } } });
+		const local = await prisma.flightReservation.update({ where: { id: flight.reservationId }, data: { cancellationPending: true } });
+		await afs.cancelFlight(local.afsBookingId, "Traveller");
+		await reconcileFlights();
+		await reconcileFlights();
+		expect(await prisma.itinerary.findUniqueOrThrow({ where: { id: trip.id } })).toMatchObject({ status: "CANCELLED", totalPrice: 0, cancellationRequested: false });
+		expect(await prisma.flightReservation.findUniqueOrThrow({ where: { id: flight.reservationId } })).toMatchObject({ status: "CANCELLED", cancellationPending: false });
+		expect((await prisma.roomAvailabilityRecord.findMany({ where: { roomTypeId: f.room.id } })).every(row => row.availability === 2)).toBe(true);
+	}, 60000);
 	it("blocks linking and checkout while an upstream cancellation is unresolved, then permits retry", async () => {
 		const f = await fixture();
 		const date = new Date(); date.setUTCDate(date.getUTCDate() + 14);

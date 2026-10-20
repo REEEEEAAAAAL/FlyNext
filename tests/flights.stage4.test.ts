@@ -9,6 +9,7 @@ import { createUser, createItinerary } from "#support/factories";
 import { buildRequest, callRoute, readJson, tokenFor } from "#support/requests";
 import { prisma as applicationDb } from "@/lib/prisma";
 import { idempotentExternal } from "@/lib/api/idempotency";
+import { reconcileFlightRequest } from "@/lib/afs-recovery";
 
 beforeEach(resetDatabase);
 afterEach(() => vi.restoreAllMocks());
@@ -21,6 +22,19 @@ async function flight() {
 }
 
 describe("stage 4 durable flight booking", () => {
+	it("recovers after the durable claim before any provider call without requiring the browser to retry", async () => {
+		const user = await createUser();
+		const leg = await flight();
+		const payload = { ...passenger, flightIds: [leg.id] };
+		const request = buildRequest({ method: "POST", headers: { "Idempotency-Key": "durable-before-provider" } });
+		await expect(idempotentExternal(request, user.id, "flight-book", payload, async () => { throw new Error("Interrupted before provider"); }, undefined, { payload, returnLegCount: 0 })).rejects.toThrow("Interrupted");
+		const stored = await prisma.bookingRequest.findFirstOrThrow();
+		await reconcileFlightRequest(stored.id);
+		await reconcileFlightRequest(stored.id);
+		expect(await prisma.bookingRequest.findUniqueOrThrow({ where: { id: stored.id } })).toMatchObject({ state: "COMPLETE", statusCode: 201 });
+		expect(await prisma.afsOfflineBooking.count()).toBe(1);
+		expect(await prisma.flightReservation.count()).toBe(1);
+	}, 60000);
 	it("has one winner for the final seat across simultaneous requests", async () => {
 		const leg = await flight();
 		const capacity = leg.availableSeats;

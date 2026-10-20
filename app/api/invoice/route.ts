@@ -211,7 +211,7 @@ export const GET = withRoute(async (request) => {
 		page = pdfDoc.addPage([612, 792]);
 		pages.push(page);
 		drawPageHeader(page, regular, bold, true);
-		y = 728;
+		y = 660;
 	};
 	const ensureSpace = (height: number): void => {
 		if (y - height < 112) startContinuationPage();
@@ -225,11 +225,12 @@ export const GET = withRoute(async (request) => {
 
 	sectionHeading("Reservation details");
 	if (itinerary.flight !== null) {
-		ensureSpace(26);
+		ensureSpace(42);
 		drawText(page, "FLIGHT RESERVATION", 48, y - 4, bold, 9, colors.ink, 250);
-		drawRightText(page, `Reference ${itinerary.flight.afsBookingId.slice(0, 6).toUpperCase()}  |  ${itinerary.flight.status}`, 564, y - 4, bold, 9, colors.accent, 300);
-		drawRightText(page, `Total ${money(itinerary.flight.price)}`, 564, y - 19, regular, 8, colors.muted, 180);
-		y -= 25;
+		drawRightText(page, itinerary.flight.status, 564, y - 4, bold, 9, colors.accent, 180);
+		drawText(page, `Reference ${itinerary.flight.afsBookingId.toUpperCase()}`, 48, y - 19, regular, 8, colors.ink, 516);
+		drawRightText(page, `Total ${money(itinerary.flight.price)}`, 564, y - 34, regular, 8, colors.muted, 180);
+		y -= 40;
 
 		const departure = itinerary.flight.departure;
 		const arrival = itinerary.flight.arrival;

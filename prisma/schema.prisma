@@ -118,9 +118,7 @@ model FlightReservation {
   userId       Int
   itinerary    Itinerary?    @relation(fields: [itineraryId], references: [id])
   itineraryId  Int?          @unique
-  // AFS's own booking id, and the key `retrieve`/`cancel` authorise with. The
-  // passenger-facing reference is only this value's first six characters, so
-  // storing the short form makes a booking impossible to verify or cancel.
+  // Provider lookup key, including full remote references and legacy keys.
   afsBookingId String        @unique
   departure    Json // { date: DateTime, airport: String }
   arrival      Json // { date: DateTime, airport: String }
@@ -158,6 +156,7 @@ model BookingRequest {
   requestHash String
   state String @default("PENDING")
   response Json?
+  recovery Json?
   statusCode Int?
   createdAt DateTime @default(now())
   @@unique([userId, key])
