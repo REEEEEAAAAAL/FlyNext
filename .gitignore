@@ -45,6 +45,7 @@ yarn-error.log*
 # ...except the template, which is what a fresh clone copies from.
 !.env.example
 !.env.test.example
+!.env.docker.example
 
 # vercel
 .vercel

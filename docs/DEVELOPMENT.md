@@ -38,3 +38,7 @@ Run these commands in order, with `npm run build` before `npm run test:e2e`. The
 ## Troubleshooting
 
 If installation, Prisma generation, or builds fail because of filesystem permissions, retry in an authorized environment and retain the original safety checks. Do not disable type, lint, or build checks to hide errors.
+
+## Complete local Docker environment
+
+For a deployment using only Docker Desktop / Compose, see the [Docker guide](DOCKER.md). Generate a separate `.env.docker.local`; do not reuse business environment files or redirect the Neon test runner to Compose. The dedicated Docker smoke verifies the isolated database identity before writes and uses the built-in AFS.

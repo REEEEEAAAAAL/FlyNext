@@ -1,35 +1,38 @@
+name: ${COMPOSE_PROJECT_NAME:?Create .env.docker.local first}
+
 services:
   nextjs:
     build:
       context: .
       dockerfile: dockerfile
+    image: ${COMPOSE_PROJECT_NAME}-app:local
+    init: true
+    command: ["node", "scripts/docker/start.mjs"]
     ports:
-      - "3000:3000"
+      - "127.0.0.1:${FLYNEXT_DOCKER_PORT:-3300}:3000"
     environment:
-      - DATABASE_URL=${DATABASE_URL}
-      - JWT_ACCESS_SECRET=${JWT_ACCESS_SECRET}
-      - JWT_REFRESH_SECRET=${JWT_REFRESH_SECRET}
-      - JWT_ACCESS_TOKEN_EXPIRY_TIME=${JWT_ACCESS_TOKEN_EXPIRY_TIME}
-      - JWT_REFRESH_TOKEN_EXPIRY_TIME=${JWT_REFRESH_TOKEN_EXPIRY_TIME}
-      - AFS_API_KEY=${AFS_API_KEY}
-      # `docker compose --profile afs up -d` starts the bundled AFS container; to
-      # use it, put AFS_BASE_URL=http://afs:3000 in .env (using the service alias
-      # rather than localhost, which inside this network is the container itself).
-      # Left empty, the app uses its built-in offline provider instead. It is
-      # never defaulted to the container address, because a service that is not
-      # running would then be indistinguishable from one that is misbehaving.
-      - AFS_BASE_URL=${AFS_BASE_URL:-}
-      - AFS_MOCK=${AFS_MOCK:-}
-      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME:-}
-      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY:-}
-      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET:-}
-      - CLOUDINARY_URL=${CLOUDINARY_URL:-}
-      - CLOUDINARY_FOLDER=${CLOUDINARY_FOLDER:-flynext}
+      DATABASE_URL: postgresql://flynext_docker:${FLYNEXT_DOCKER_PASSWORD:?Create .env.docker.local first}@postgres:5432/flynext_docker_demo?connection_limit=1&connect_timeout=5
+      COMPOSE_PROJECT_NAME: ${COMPOSE_PROJECT_NAME}
+      FLYNEXT_DOCKER_INSTANCE_ID: ${FLYNEXT_DOCKER_INSTANCE_ID:?Create .env.docker.local first}
+      JWT_ACCESS_SECRET: ${FLYNEXT_DOCKER_ACCESS_SECRET:?Create .env.docker.local first}
+      JWT_REFRESH_SECRET: ${FLYNEXT_DOCKER_REFRESH_SECRET:?Create .env.docker.local first}
+      JWT_ACCESS_TOKEN_EXPIRY_TIME: 15m
+      JWT_REFRESH_TOKEN_EXPIRY_TIME: 7d
+      AFS_BASE_URL: ""
+      AFS_MOCK: "true"
+      NEXT_TELEMETRY_DISABLED: "1"
     volumes:
       - uploads-volume:/app/public/uploads
     depends_on:
-      - postgres
-    restart: always
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "scripts/docker/health.mjs"]
+      interval: 15s
+      timeout: 10s
+      start_period: 120s
+      retries: 5
+    restart: unless-stopped
 
   # ---------------------------------------------------------------------------
   # Local Advanced Flights System (AFS) — optional.
@@ -54,7 +57,7 @@ services:
     ports:
       - "4000:3000"
     environment:
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-flynextdb_owner}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}@afs-postgres:5432/afsdb
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-flynextdb_owner}:${FLYNEXT_DOCKER_PASSWORD:?Create .env.docker.local first}@afs-postgres:5432/afsdb
       - AFS_LOCAL_AGENCY=${AFS_LOCAL_AGENCY:-flynext-local}
       - AFS_SEED_DAYS=${AFS_SEED_DAYS:-7}
       - PORT=3000
@@ -71,7 +74,7 @@ services:
     # network, which keeps it from colliding with the FlyNext database on 5432.
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-flynextdb_owner}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
+      - POSTGRES_PASSWORD=${FLYNEXT_DOCKER_PASSWORD:?Create .env.docker.local first}
       - POSTGRES_DB=afsdb
     volumes:
       - afs_postgres_data:/var/lib/postgresql/data
@@ -84,17 +87,22 @@ services:
 
   postgres:
     image: postgres:15-alpine
-    ports:
-      - "5432:5432"
     environment:
-      # Sourced from the .env file that docker-compose reads automatically, so no
-      # database credential is ever committed to this file.
-      - POSTGRES_USER=${POSTGRES_USER:-flynextdb_owner}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set in .env}
-      - POSTGRES_DB=${POSTGRES_DB:-flynextdb}
+      POSTGRES_USER: flynext_bootstrap
+      POSTGRES_PASSWORD: ${FLYNEXT_DOCKER_ADMIN_PASSWORD:?Create .env.docker.local first}
+      POSTGRES_DB: flynext_docker_demo
+      FLYNEXT_DOCKER_PASSWORD: ${FLYNEXT_DOCKER_PASSWORD}
+      FLYNEXT_DOCKER_INSTANCE_ID: ${FLYNEXT_DOCKER_INSTANCE_ID}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    restart: always
+      - ./scripts/docker/postgres-init.sh:/docker-entrypoint-initdb.d/10-flynext.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U flynext_bootstrap -d flynext_docker_demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
 
 volumes:
   postgres_data:

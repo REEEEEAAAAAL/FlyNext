@@ -210,7 +210,9 @@ export default function FlightSearchPage() {
 
     // Return search field (for round-trip).
     const [returnDate, setReturnDate] = useState("");
+    const [deviceTimeZone, setDeviceTimeZone] = useState("");
     useEffect(() => {
+        setDeviceTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
         const saved = new URLSearchParams(window.location.search);
         setOrigin(saved.get("origin") ?? ""); setDestination(saved.get("destination") ?? "");
         setDate(saved.get("date") ?? ""); setReturnDate(saved.get("returnDate") ?? "");
@@ -672,7 +674,7 @@ export default function FlightSearchPage() {
         <div className="flight-search-page page-shell card">
             <BookingSteps current="reserve" />
             <h1 className="text-3xl font-bold mb-6 heading">Find your next flight</h1>
-            <p className="search-intro">Compare routes, connections and fares. All times follow your device time zone ({Intl.DateTimeFormat().resolvedOptions().timeZone}). Prices are in USD.</p>
+            <p className="search-intro">Compare routes, connections and fares. All times follow your device time zone{deviceTimeZone ? ` (${deviceTimeZone})` : ""}. Prices are in USD.</p>
 
             {/* Trip Type Toggle */}
             <div className="flex space-x-4 mb-6">
