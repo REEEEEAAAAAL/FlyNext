@@ -1,75 +1,75 @@
-# FlyNext 工程规范
+# FlyNext Engineering Guidelines
 
-FlyNext 是基于 Next.js 的旅行预订作品集应用。用户界面为英语，支持浅色和深色主题。
+FlyNext is a travel booking portfolio application built with Next.js. The interface is in English and supports light and dark themes.
 
-## 技术栈
+## Tech stack
 
-- Next.js 15 App Router、React 19、TypeScript 5 strict、Tailwind CSS 4。
-- PostgreSQL 与 Prisma 6.3.1。
-- Vitest 用于单元和集成测试，Playwright 用于浏览器端到端测试。
-- 依赖版本以锁文件为准；未经明确要求，不升级或替换依赖。
+- Next.js 15 App Router, React 19, TypeScript 5 in strict mode, and Tailwind CSS 4.
+- PostgreSQL and Prisma 6.3.1.
+- Vitest for unit and integration tests; Playwright for browser end-to-end tests.
+- The lockfile is authoritative for dependency versions. Do not upgrade or replace dependencies unless explicitly requested.
 
-## 目录约定
+## Directory conventions
 
-- `app/`：页面、共享组件、布局和错误边界。
-- `app/api/`：HTTP Route Handlers。
-- `lib/api/`：请求校验、鉴权、授权、限流、幂等和错误处理。
-- `lib/reservations.ts`：预订生命周期和跨领域协调。
-- `lib/afs/`：内置航班供应商及其预订账本。
-- `prisma/`：数据模型、迁移和种子数据。
-- `types/`：共享 TypeScript 契约。
-- `tests/`、`e2e/`：单元/集成测试和浏览器工作流。
-- `scripts/`：开发、验证和维护命令。
-- `docs/`：公开开发/部署说明及合成数据截图。
-- `docs/internal/` 是可选的本机上下文；公开开发、构建和测试不得依赖该目录。
+- `app/`: Pages, shared components, layouts, and error boundaries.
+- `app/api/`: HTTP Route Handlers.
+- `lib/api/`: Request validation, authentication, authorization, rate limiting, idempotency, and error handling.
+- `lib/reservations.ts`: Reservation lifecycle and cross-domain coordination.
+- `lib/afs/`: Built-in flight provider and its booking ledger.
+- `prisma/`: Data models, migrations, and seed data.
+- `types/`: Shared TypeScript contracts.
+- `tests/`, `e2e/`: Unit/integration tests and browser workflows.
+- `scripts/`: Development, verification, and maintenance commands.
+- `docs/`: Public development/deployment guides and screenshots using synthetic data.
+- `docs/internal/` provides optional local context. Public development, builds, and tests must not depend on it.
 
-## 常用命令
+## Common commands
 
-- `npm ci`：按锁文件安装依赖并生成 Prisma Client，不应用迁移。
-- `npm run dev`：启动本地开发服务器。
-- `npm run typecheck`：检查应用和测试 TypeScript 类型。
-- `npm run lint`：运行 ESLint。
-- `npm test`：运行数据库无关单元测试。
-- `npm run build:server`：编译独立服务端 TypeScript。
-- `npm run build`：生成 Next.js 生产构建。
-- `npm run test:db:verify`、`npm run test:integration`、`npm run test:e2e`：核验数据库目标后，按顺序运行集成和浏览器测试。
-- `npm run prisma:migrate` 和 `npm run seed:reference` 会写入数据库，运行前确认目标。
-- `npm run seed` 与 `npm run seed:prod` 是清理型演示种子，不得用于保留真实数据的数据库。
+- `npm ci`: Install dependencies from the lockfile and generate Prisma Client without applying migrations.
+- `npm run dev`: Start the local development server.
+- `npm run typecheck`: Check TypeScript types in the application and tests.
+- `npm run lint`: Run ESLint.
+- `npm test`: Run database-independent unit tests.
+- `npm run build:server`: Compile the standalone server TypeScript.
+- `npm run build`: Create a Next.js production build.
+- `npm run test:db:verify`, `npm run test:integration`, `npm run test:e2e`: Verify the database target, then run integration and browser tests in that order.
+- `npm run prisma:migrate` and `npm run seed:reference` write to the database. Confirm the target before running them.
+- `npm run seed` and `npm run seed:prod` are destructive demo seeds. Never use them on databases whose real data must be preserved.
 
-## 实现约定
+## Implementation conventions
 
-- 保持严格类型；优先复用现有模块、领域类型和响应契约。
-- 不用 `any`、类型断言或关闭检查来掩盖不确定类型。
-- Route Handlers 使用 `withRoute` 和 `ApiError`。
-- 延续现有 HTTP 状态码、响应包装和 JSON 数值类型。
-- 在服务端执行鉴权和资源所有权检查，不能只依赖界面隐藏控件。
-- 校验外部输入后再执行数据库写入、上传或供应商调用。
-- 不向客户端返回数据库异常、连接信息或内部诊断。
-- 保留现有错误处理、限流和幂等边界，不为简化实现移除保护。
-- 组件与领域逻辑尽量沿用当前目录和职责，不引入重复实现。
-- 注释应简洁、专业、自然；不要在注释中使用 Markdown、表情或装饰字符。
+- Maintain strict typing; prefer existing modules, domain types, and response contracts.
+- Do not hide uncertain types with `any`, type assertions, or disabled checks.
+- Use `withRoute` and `ApiError` in Route Handlers.
+- Preserve existing HTTP status codes, response envelopes, and JSON numeric types.
+- Enforce authentication and resource ownership on the server; hiding UI controls alone is insufficient.
+- Validate external input before database writes, uploads, or provider calls.
+- Do not return database exceptions, connection details, or internal diagnostics to clients.
+- Preserve existing error handling, rate limits, and idempotency boundaries. Do not remove safeguards to simplify implementation.
+- Keep components and domain logic within the current directory structure and responsibilities where possible; do not introduce duplicate implementations.
+- Keep comments concise, professional, and natural. Do not use Markdown, emojis, or decorative characters in comments.
 
-## 安全与测试
+## Safety and testing
 
-- 不提交或输出环境文件、真实凭据、完整连接串、令牌、备份或个人数据。
-- 示例配置只能使用无效占位值；不要复制本地环境文件作为示例。
-- 单元测试不得隐式读取本地环境文件或连接数据库。
-- 集成和 E2E 测试只能使用专用、隔离且经安全运行器核验的测试数据库。
-- 不绕过数据库安全运行器，不对开发或生产数据运行测试夹具。
-- 测试会写入、迁移或清理数据库时，先确认目标及操作影响。
-- 审阅 Prisma 迁移；迁移只对明确授权的目标执行。
-- 构建步骤不得隐式迁移、重置数据库或填充种子数据。
+- Do not commit or output environment files, real credentials, full connection strings, tokens, backups, or personal data.
+- Use only invalid placeholders in example configuration. Do not copy local environment files as examples.
+- Unit tests must not implicitly read local environment files or connect to a database.
+- Integration and E2E tests must use a dedicated, isolated test database verified by the safety runner.
+- Do not bypass the database safety runner or run test fixtures against development or production data.
+- Before tests write to, migrate, or clear a database, confirm the target and the impact of the operations.
+- Review Prisma migrations. Apply them only to explicitly authorized targets.
+- Build steps must not implicitly run migrations, reset databases, or seed data.
 
-## 核心业务约束
+## Core business constraints
 
-- 酒店入住和退房使用 UTC 日历日期；保持旧数据兼容及库存并发保护。
-- 预订写入保留事务和幂等键；取消恢复库存应保持一致且不可重复扣加。
-- 公开酒店和房型响应不得包含客人预订记录。
-- 房主数据必须校验当前用户身份及资源所有权。
-- 一个行程最多包含一个航班预订和一个酒店预订。
-- DEMO 结账不处理真实资金，不收集真实银行卡或护照信息。
+- Use UTC calendar dates for hotel check-in and check-out. Preserve compatibility with legacy data and inventory concurrency safeguards.
+- Preserve transactions and idempotency keys for reservation writes. Cancellation must restore inventory consistently, without duplicate decrements or increments.
+- Public hotel and room-type responses must not include guest booking records.
+- Verify the current user's identity and resource ownership when accessing hotel-owner data.
+- An itinerary may contain at most one flight reservation and one hotel reservation.
+- DEMO checkout must not process real money or collect real payment-card or passport details.
 
-## 文档与交付
+## Documentation and delivery
 
-按需阅读 `docs/DEVELOPMENT.md` 或 `docs/DEPLOYMENT.md` 的相关部分，不需通读所有文档。
-公开说明应简洁、可复现，不加入内部交接、私人端点或生产运维记录。
+Read relevant sections of `docs/DEVELOPMENT.md` or `docs/DEPLOYMENT.md` as needed; reading all documentation is unnecessary.
+Keep public documentation concise and reproducible. Do not include internal handoffs, private endpoints, or production operations records.

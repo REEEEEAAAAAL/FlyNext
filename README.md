@@ -29,7 +29,7 @@ The project demonstrates how browser workflows connect to authenticated APIs, tr
 | Flights | Search one-way and return itineraries, book and retrieve tickets, view connecting legs, and cancel reservations. |
 | Hotels | Search listings, inspect room types and date-specific availability, create and edit listings, and book or cancel stays. |
 | Itineraries | Build an itinerary from reservations, review its running total, and manage the included bookings. An itinerary supports at most one flight reservation and one hotel reservation. |
-| DEMO checkout | Confirm an itinerary into an order, preserve its confirmation snapshot, and download a PDF receipt. No real payment is processed. |
+| DEMO checkout | Confirm an itinerary into an order, preserve its confirmation snapshot, and download a PDF receipt with outbound, return, and connecting flight segments when available. No real payment is processed. |
 | Accounts | Register, sign in, manage a profile and avatar, and maintain a refreshable session. |
 | Notifications | Read a per-account notification feed and unread count. |
 | Hotel owners | Manage owned listings, room types, nightly inventory, and view reservation and availability summaries. Ownership is checked on protected operations. |
@@ -156,7 +156,7 @@ Never commit `.env`, database credentials, signing secrets, Cloudinary keys, or 
 | `npm run build` | Create the Next.js production build. |
 | `npm audit --audit-level=high` | Check installed dependency advisories at high severity and above. |
 
-The default `npm test` workflow does not read environment files or connect to a database. Integration and E2E use `.env.test` and the separately enrolled Neon `flynext_test` target; they may migrate and clear synthetic test data. Run `test:db:verify`, `test:integration`, and `test:e2e` sequentially, never against a development or production database. E2E starts its own single-worker production server on port 3210 after a build. Read the [Development guide](docs/DEVELOPMENT.md) before running database tests. Docker-based runtime validation is deferred.
+The default `npm test` workflow does not read environment files or connect to a database. Integration and E2E use `.env.test` and the separately enrolled Neon `flynext_test` target; they may migrate and clear synthetic test data. Run `test:db:verify`, `test:integration`, and `test:e2e` sequentially, never against a development or production database. E2E starts its own single-worker production server on port 3210 after a build. Read the [Development guide](docs/DEVELOPMENT.md) before running database tests. The standalone Docker image has passed build, startup, and unauthenticated HTTP smoke checks without a database connection; Compose database and multi-service validation remain pending.
 
 The database verification command proves the test target is the enrolled test database; a `_test` name alone is not sufficient. The suite refuses production and unregistered remote targets and rechecks database identity around destructive steps. Do not bypass the repository runners or reuse a running server for E2E. CI database tests require their own separately registered endpoint and restricted role; they are not configured merely by copying a developer's `.env.test`.
 
@@ -177,8 +177,6 @@ FlyNext implements one AFS client contract with two per-request back ends:
 - **Remote AFS:** set `AFS_BASE_URL` to a reachable HTTP(S) AFS service and provide `AFS_API_KEY`. A usable `AFS_BASE_URL` selects remote mode unless `AFS_MOCK=true`; `AFS_MOCK=false` also selects remote mode when that URL is usable. An empty or placeholder URL selects the built-in provider. Remote payloads are validated before they enter application logic.
 
 The remote provider is an integration point, not a claim that an external AFS service is currently deployed or verified. See the [AFS project](https://github.com/Kianoosh76/afs) for its service contract.
-
-## Deployment
 
 ## Deployment
 

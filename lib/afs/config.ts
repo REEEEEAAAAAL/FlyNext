@@ -104,9 +104,8 @@ export interface AfsModeResolution {
  * 1. `AFS_MOCK=true` — an explicit request for the offline implementation. It
  *    wins over a configured URL so that CI and Vercel can pin the behaviour
  *    without touching `AFS_BASE_URL`.
- * 2. `AFS_MOCK=false` — an explicit request for HTTP. This is the only way to
- *    require the remote service: with it set, a missing or placeholder
- *    `AFS_BASE_URL` is an error rather than a silent downgrade.
+ * 2. `AFS_MOCK=false` — selects the remote provider when a usable
+ *    `AFS_BASE_URL` exists; otherwise falls back to the offline provider.
  * 3. No usable `AFS_BASE_URL` — offline, because there is nowhere to call.
  * 4. Otherwise remote.
  */
