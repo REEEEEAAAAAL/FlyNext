@@ -1,6 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { loginUrl } from "@/app/lib/return-path";
+
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { clearAccessToken } from "@/app/lib/session";
@@ -114,7 +118,7 @@ export default function FlightBookingDetailsPage() {
     const params = useParams();
     const { confirm, error: showError, success, info } = useFeedback();
     const [booking, setBooking] = useState<FlightBooking | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [actionLoading, setActionLoading] = useState({
         verify: false,
@@ -128,13 +132,13 @@ export default function FlightBookingDetailsPage() {
      */
     const [confirming, setConfirming] = useState(false);
 
-    const refreshToken = async () => {
-        const token = localStorage.getItem("accessToken");
+    const refreshToken = useCallback(async () => {
+        const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
-        const response = await fetch("/api/user", {
+        const response = await sessionFetch("/api/user", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -148,12 +152,12 @@ export default function FlightBookingDetailsPage() {
             router.push("/auth/refresh");
             return;
         }
-    };
+    }, [router]);
 
     useEffect(() => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
         /*
@@ -168,7 +172,7 @@ export default function FlightBookingDetailsPage() {
             setLoading(true);
             setError("");
             try {
-                const res = await fetch(
+                const res = await sessionFetch(
                     `/api/user/flight-bookings/${params.bookingId}`,
                     {
                         method: "GET",
@@ -206,12 +210,12 @@ export default function FlightBookingDetailsPage() {
         };
 
         fetchBooking();
-    }, [params.bookingId, router, showError]);
+    }, [params.bookingId, router, refreshToken, showError]);
 
     const handleVerifyFlight = async () => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
 
@@ -219,7 +223,7 @@ export default function FlightBookingDetailsPage() {
         const pending = info("Checking flight status…", { duration: 0 });
 
         try {
-            const res = await fetch(
+            const res = await sessionFetch(
                 `/api/user/flight-bookings/${params.bookingId}`,
                 {
                     method: "POST",
@@ -246,7 +250,7 @@ export default function FlightBookingDetailsPage() {
             });
 
             // Refresh booking data
-            const bookingRes = await fetch(
+            const bookingRes = await sessionFetch(
                 `/api/user/flight-bookings/${params.bookingId}`,
                 {
                     headers: {
@@ -277,9 +281,9 @@ export default function FlightBookingDetailsPage() {
      * the rest of the handler reads the same way it did before.
      */
     const handleCancelFlight = async () => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
 
@@ -306,7 +310,7 @@ export default function FlightBookingDetailsPage() {
         const pending = info("Cancelling your booking…", { duration: 0 });
 
         try {
-            const res = await fetch(
+            const res = await sessionFetch(
                 `/api/user/flight-bookings/${params.bookingId}`,
                 {
                     method: "DELETE",
@@ -335,7 +339,7 @@ export default function FlightBookingDetailsPage() {
             });
 
             // Refresh booking data
-            const bookingRes = await fetch(
+            const bookingRes = await sessionFetch(
                 `/api/user/flight-bookings/${params.bookingId}`,
                 {
                     headers: {
@@ -358,21 +362,21 @@ export default function FlightBookingDetailsPage() {
         }
     };
 
-    if (loading) return <div className="max-w-4xl mx-auto p-8">Loading...</div>;
+    if (loading) return <div className="page-shell">Loading...</div>;
     if (error)
         return (
-            <div className="max-w-4xl mx-auto p-8 text-red-600 dark:text-red-400">
+            <div className="page-shell text-red-600 dark:text-red-400">
                 {error}
             </div>
         );
     if (!booking)
-        return <div className="max-w-4xl mx-auto p-8">Booking not found</div>;
+        return <div className="page-shell">Booking not found</div>;
 
     const directions = flightDirections(booking.departure, booking.arrival);
     const reference = bookingReference(booking.afsBookingId);
 
     return (
-        <div className="card max-w-4xl mx-auto p-8 text-black dark:text-zinc-100">
+        <div className="card page-shell text-black dark:text-zinc-100">
             <div className="mb-6">
                 <Link
                     href="/user/flight-bookings"

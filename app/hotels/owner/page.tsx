@@ -1,6 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { loginUrl } from "@/app/lib/return-path";
+
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clearAccessToken } from "@/app/lib/session";
@@ -79,8 +83,7 @@ function EmptyListings() {
                 Create Your First Hotel
             </Link>
             <p className="mt-4 text-sm text-gray-500 dark:text-zinc-400">
-                Already listed a property and not seeing it? Try clearing the
-                filters below.
+                Create a listing, then add room types to open your availability calendar.
             </p>
         </div>
     );
@@ -90,12 +93,15 @@ export default function HotelList() {
     const router = useRouter();
     const { error: toastError } = useFeedback();
     const [hotels, setHotels] = useState<Hotel[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     /** Signed in, but the account carries no owner flag. */
     const [notAnOwner, setNotAnOwner] = useState(false);
     /** At least one successful load, so the empty state is not shown mid-flight. */
     const [loaded, setLoaded] = useState(false);
+    const [unfilteredEmpty, setUnfilteredEmpty] = useState(false);
+    const requestVersion = useRef(0);
+    const requestController = useRef<AbortController | null>(null);
 
     // Filter states
     const [city, setCity] = useState("");
@@ -107,14 +113,14 @@ export default function HotelList() {
     // Redirect to login if no access token is found.
     useEffect(() => {
         const fetchData = async () => {
-            const token = localStorage.getItem("accessToken");
+            const token = getAccessToken();
             if (!token) {
                 // Redirect to login if no token found.
-                router.push("/auth/login");
+                router.push(loginUrl());
                 return;
             }
 
-            const response = await fetch("/api/user", {
+            const response = await sessionFetch("/api/user", {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -133,25 +139,37 @@ export default function HotelList() {
         fetchData();
     }, [router]);
 
-    const fetchHotels = async () => {
+    const fetchHotels = useCallback(async (selectedFilters: {
+        city: string;
+        name: string;
+        starRating: string;
+        priceMin: string;
+        priceMax: string;
+    }) => {
+        const version = ++requestVersion.current;
+        requestController.current?.abort();
+        const controller = new AbortController();
+        requestController.current = controller;
         setLoading(true);
         setError("");
         try {
             // Build query parameters based on filters.
             const params = new URLSearchParams();
-            if (city) params.append("city", city);
-            if (name) params.append("name", name);
-            if (starRating) params.append("starRating", starRating);
-            if (priceMin) params.append("priceMin", priceMin);
-            if (priceMax) params.append("priceMax", priceMax);
+            if (selectedFilters.city) params.append("city", selectedFilters.city);
+            if (selectedFilters.name) params.append("name", selectedFilters.name);
+            if (selectedFilters.starRating) params.append("starRating", selectedFilters.starRating);
+            if (selectedFilters.priceMin) params.append("priceMin", selectedFilters.priceMin);
+            if (selectedFilters.priceMax) params.append("priceMax", selectedFilters.priceMax);
 
-            const token = localStorage.getItem("accessToken");
-            const res = await fetch(`/api/hotels/owner?${params.toString()}`, {
+            const token = getAccessToken();
+            const res = await sessionFetch(`/api/hotels/owner?${params.toString()}`, {
+                signal: controller.signal,
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
             });
             const data = await res.json().catch(() => null);
+            if (version !== requestVersion.current || controller.signal.aborted) return;
 
             if (!res.ok) {
                 /*
@@ -174,25 +192,27 @@ export default function HotelList() {
             } else {
                 setNotAnOwner(false);
                 setHotels(data?.hotels ?? []);
+                setUnfilteredEmpty(params.size === 0 && (data?.hotels?.length ?? 0) === 0);
             }
         } catch (err) {
+            if (version !== requestVersion.current || controller.signal.aborted) return;
             const failure = "An error occurred while fetching hotels.";
             setError(failure);
             toastError("Could not load your listings", { description: failure });
         } finally {
-            setLoading(false);
-            setLoaded(true);
+            if (version === requestVersion.current && !controller.signal.aborted) { setLoading(false); setLoaded(true); }
         }
-    };
+    }, [toastError]);
 
     // Fetch hotels on component mount.
     useEffect(() => {
-        fetchHotels();
-    }, []);
+        void fetchHotels({ city: "", name: "", starRating: "", priceMin: "", priceMax: "" });
+        return () => { requestVersion.current += 1; requestController.current?.abort(); };
+    }, [fetchHotels]);
 
     const handleFilterSubmit = (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
-        fetchHotels();
+        void fetchHotels({ city, name, starRating, priceMin, priceMax });
     };
 
     // Helper to compute room price range.
@@ -212,11 +232,12 @@ export default function HotelList() {
      * filters are what the empty state's own footnote tells them to clear, so
      * leaving the form visible there would be contradictory.
      */
-    const showEmptyState = loaded && !error && hotels.length === 0;
+    const showEmptyState = loaded && !loading && !error && hotels.length === 0 && (unfilteredEmpty || notAnOwner);
 
     return (
-        <div className="max-w-6xl mx-auto p-6">
-            <h1 className="text-3xl font-bold mb-6 heading">Hotel Listings</h1>
+        <div className="page-shell">
+            <h1 className="text-3xl font-bold mb-6 heading">Your host workspace</h1>
+            <p className="search-intro">Manage properties, room types and nightly availability. Open a listing to view its rooms and guest reservations.</p>
 
             {showEmptyState ? (
                 <EmptyListings />
@@ -225,7 +246,7 @@ export default function HotelList() {
                     {/* Filter Form in a Single Line */}
                     <form
                         onSubmit={handleFilterSubmit}
-                        className="mb-6 flex flex-wrap gap-2 items-center"
+                        className="search-form mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-center"
                     >
                         <input
                             type="text"
@@ -233,7 +254,7 @@ export default function HotelList() {
                             aria-label="City"
                             value={city}
                             onChange={(e) => setCity(e.target.value)}
-                            className="border p-2 rounded flex-1 min-w-[100px] dark:border-white/10 dark:bg-zinc-800"
+                            className="field"
                         />
                         <input
                             type="text"
@@ -241,7 +262,7 @@ export default function HotelList() {
                             aria-label="Hotel Name"
                             value={name}
                             onChange={(e) => setName(e.target.value)}
-                            className="border p-2 rounded flex-1 min-w-[100px] dark:border-white/10 dark:bg-zinc-800"
+                            className="field"
                         />
                         <input
                             type="number"
@@ -249,7 +270,7 @@ export default function HotelList() {
                             aria-label="Star Rating"
                             value={starRating}
                             onChange={(e) => setStarRating(e.target.value)}
-                            className="border p-2 rounded w-32 dark:border-white/10 dark:bg-zinc-800"
+                            className="field"
                         />
                         <input
                             type="number"
@@ -257,7 +278,7 @@ export default function HotelList() {
                             aria-label="Minimum Price"
                             value={priceMin}
                             onChange={(e) => setPriceMin(e.target.value)}
-                            className="border p-2 rounded w-32 dark:border-white/10 dark:bg-zinc-800"
+                            className="field"
                         />
                         <input
                             type="number"
@@ -265,10 +286,11 @@ export default function HotelList() {
                             aria-label="Maximum Price"
                             value={priceMax}
                             onChange={(e) => setPriceMax(e.target.value)}
-                            className="border p-2 rounded w-32 dark:border-white/10 dark:bg-zinc-800"
+                            className="field"
                         />
                         <button
                             type="submit"
+                            disabled={loading}
                             className="bg-black text-white p-2 rounded whitespace-nowrap dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
                         >
                             Filter
@@ -279,24 +301,25 @@ export default function HotelList() {
                     <div className="mb-6 text-right">
                         <Link
                             href="/hotels/new"
-                            className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-500 transition-colors"
+                            className="button-primary"
                         >
                             Create New Hotel
                         </Link>
                     </div>
 
-                    {loading && <p className="muted">Loading hotels...</p>}
+                    {loading && <p role="status" className="muted">Loading hotels...</p>}
                     {error && (
                         <p className="text-red-500 dark:text-red-400">{error}</p>
                     )}
 
+                    {!loading && !error && hotels.length === 0 && <p role="status" className="surface p-6 muted">No listings match these filters. Clear the fields and select Filter to see all properties.</p>}
                     {/* Hotels List */}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                         {hotels.map((hotel) => {
                             const priceRange = getPriceRange(hotel.roomTypes);
                             return (
                                 <Link key={hotel.id} href={`/hotels/${hotel.id}/edit`}>
-                                    <div className="border p-4 rounded shadow hover:shadow-md dark:bg-zinc-900 dark:border-white/10 dark:shadow-none dark:hover:border-white/20 transition cursor-pointer">
+                                    <div className="card-interactive h-full p-5">
                                         {hotel.logo && (
                                             <img
                                                 src={hotel.logo}
@@ -318,8 +341,7 @@ export default function HotelList() {
                                         </p>
                                         {priceRange && (
                                             <p className="text-gray-700 dark:text-zinc-200 mt-2">
-                                                Price from ${priceRange.minPrice} to $
-                                                {priceRange.maxPrice}
+                                                {priceRange.minPrice === priceRange.maxPrice ? `$${priceRange.minPrice.toFixed(2)}` : `$${priceRange.minPrice.toFixed(2)} – $${priceRange.maxPrice.toFixed(2)}`} USD / night
                                             </p>
                                         )}
                                     </div>

@@ -7,7 +7,7 @@
  */
 
 import bcrypt from "bcryptjs";
-import jwt, { type JwtPayload, type SignOptions } from "jsonwebtoken";
+import jwt, { type JwtPayload } from "jsonwebtoken";
 import type { TokenClaims } from "@/types";
 
 /** bcrypt cost factor. */
@@ -77,7 +77,7 @@ export function parseDurationToSeconds(value: string, field: string): number {
 		);
 	}
 	const amount = Number(match[1]);
-	// A bare number is seconds, matching `jsonwebtoken`'s own convention.
+	// Our configuration treats a bare number as seconds; pass a number to JWT.
 	const unit = match[2] ?? "s";
 	const multipliers: Record<string, number> = {
 		s: 1,
@@ -89,7 +89,9 @@ export function parseDurationToSeconds(value: string, field: string): number {
 	if (multiplier === undefined) {
 		throw new Error(`Unsupported duration unit "${unit}" in "${field}".`);
 	}
-	return amount * multiplier;
+	const seconds = amount * multiplier;
+	if (!Number.isSafeInteger(seconds) || seconds <= 0) throw new Error(`Environment variable "${field}" must be a positive safe integer duration.`);
+	return seconds;
 }
 
 /** Lifetime of the refresh cookie, in seconds. */
@@ -104,17 +106,9 @@ export function getRefreshTokenMaxAgeSeconds(): number {
 /* Token minting                                                              */
 /* -------------------------------------------------------------------------- */
 
-/**
- * `@types/jsonwebtoken` types `expiresIn` as `number | StringValue`, where
- * `StringValue` is a template-literal union of every duration `ms` understands.
- * Our value comes from an environment variable, so it can only be a plain
- * `string`. The cast is the unavoidable boundary and `parseDurationToSeconds`
- * validates the same value before it is used for the cookie.
- */
-function expiryOption(envName: string): SignOptions["expiresIn"] {
-	const value = requireEnv(envName);
-	parseDurationToSeconds(value, envName);
-	return value as SignOptions["expiresIn"];
+/** Normalize once to numeric seconds for both JWT and cookie semantics. */
+function expiryOption(envName: string): number {
+	return parseDurationToSeconds(requireEnv(envName), envName);
 }
 
 /** Sign a short-lived access token returned in the login/refresh body. */

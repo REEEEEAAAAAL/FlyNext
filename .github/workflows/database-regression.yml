@@ -1,0 +1,64 @@
+name: 隔离数据库与浏览器回归
+on: workflow_dispatch
+permissions:
+  contents: read
+concurrency:
+  group: flynext-dedicated-ci-database
+  cancel-in-progress: false
+jobs:
+  isolated-regression:
+    environment: flynext-ci
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      DATABASE_URL: postgresql://build:build@127.0.0.1:1/build_only
+      JWT_ACCESS_SECRET: build-only-secret-never-used-for-deployment
+      CI_TEST_DATABASE_HOST: ${{ vars.CI_TEST_DATABASE_HOST }}
+      CI_BUSINESS_DATABASE_TARGETS: ${{ vars.CI_BUSINESS_DATABASE_TARGETS }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - name: 写入独立 CI 目标登记
+        env:
+          CI_TEST_ENV: ${{ secrets.CI_TEST_ENV }}
+          CI_TEST_APPROVAL: ${{ secrets.CI_TEST_APPROVAL }}
+        run: |
+          node <<'NODE'
+          const fs = require('fs');
+          for (const [key, file] of [['CI_TEST_ENV', '.env.test'], ['CI_TEST_APPROVAL', '.neon-test-approval.json']]) {
+            const value = process.env[key];
+            if (!value) throw new Error('Missing independently enrolled CI target');
+            if (key === 'CI_TEST_ENV') {
+              for (const line of value.split(/\r?\n/)) {
+                const match = line.match(/^[A-Z_][A-Z0-9_]*=(.*)$/);
+                const raw = match?.[1].trim();
+                const secret = raw?.replace(/^(["'])(.*)\1$/, '$2');
+                if (secret) console.log('::add-mask::' + secret.replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A'));
+              }
+            }
+            fs.writeFileSync(file, value, { mode: 0o600, flag: 'wx' });
+          }
+          NODE
+      - run: node node_modules/tsx/dist/cli.mjs scripts/verify-ci-target.ts
+      - run: npm run test:integration
+      - run: npm run build
+      - run: npx playwright install --with-deps chrome
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-failures
+          path: |
+            playwright-report/
+            test-results/browser/
+          retention-days: 3
+      - name: 清理临时凭据
+        if: always()
+        run: rm -f -- .env.test .neon-test-approval.json

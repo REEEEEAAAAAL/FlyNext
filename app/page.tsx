@@ -1,196 +1,28 @@
-"use client";
-
 import Link from "next/link";
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
-import { clearAccessToken } from "@/app/lib/session";
 
 export default function HomePage() {
-    const router = useRouter();
-    const [activeTab, setActiveTab] = useState<"flights" | "hotels">("flights");
-    const [dropdownOpen, setDropdownOpen] = useState(false);
-    const [isAuthenticated, setIsAuthenticated] = useState(false);
-
-    // Check for authentication on mount.
-    useEffect(() => {
-        const token = localStorage.getItem("accessToken");
-        setIsAuthenticated(!!token);
-    }, []);
-
-    const handleLogout = async () => {
-        try {
-            const token = localStorage.getItem("accessToken");
-            const res = await fetch("/api/auth/logout", {
-                method: "POST",
-                headers: {
-                    Authorization: token ? `Bearer ${token}` : "",
-                },
-            });
-            if (res.ok) {
-                clearAccessToken();
-                router.push("/auth/login");
-            }
-        } catch (error) {
-            console.error("Logout failed:", error);
-        }
-    };
-
-    return (
-        <div className="min-h-screen flex flex-col bg-[var(--background)] text-[var(--text)]">
-            {/* Main content set to flex-grow so it takes available space */}
-            <main className="container mx-auto p-6 flex-grow max-w-7xl px-4 sm:px-6 lg:px-8">
-                {/* Navigation Tabs for Primary Search */}
-                <div className="flex justify-center space-x-4 mb-8">
-                    <button
-                        onClick={() => setActiveTab("flights")}
-                        className={`px-6 py-2 rounded transition-colors font-semibold ${
-                            activeTab === "flights"
-                                ? "bg-black text-white dark:bg-zinc-100 dark:text-zinc-900"
-                                : "bg-white text-black border border-gray-300 hover:bg-gray-200 dark:bg-zinc-800 dark:text-zinc-200 dark:border-white/15 dark:hover:bg-zinc-700"
-                        }`}
-                    >
-                        Flight Search
-                    </button>
-                    <button
-                        onClick={() => setActiveTab("hotels")}
-                        className={`px-6 py-2 rounded transition-colors font-semibold ${
-                            activeTab === "hotels"
-                                ? "bg-black text-white dark:bg-zinc-100 dark:text-zinc-900"
-                                : "bg-white text-black border border-gray-300 hover:bg-gray-200 dark:bg-zinc-800 dark:text-zinc-200 dark:border-white/15 dark:hover:bg-zinc-700"
-                        }`}
-                    >
-                        Hotel Search
-                    </button>
-                </div>
-
-                {/* Tab Content */}
-                <section className="mb-12">
-                    {activeTab === "flights" ? (
-                        <div className="text-center">
-                            <h2 className="text-2xl font-bold mb-4 text-[var(--text)]">
-                                Search for Flights
-                            </h2>
-                            <p className="text-[var(--text)] mb-6">
-                                Find the best flights for your journey by
-                                clicking the button below.
-                            </p>
-                            <Link
-                                href="/flights"
-                                className="px-6 py-3 bg-black text-white rounded hover:bg-gray-800 transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-                            >
-                                Go to Flight Search
-                            </Link>
-                        </div>
-                    ) : (
-                        <div className="text-center">
-                            <h2 className="text-2xl font-bold mb-4 text-[var(--text)]">
-                                Search for Hotels
-                            </h2>
-                            <p className="text-[var(--text)] mb-6">
-                                Discover the perfect hotel for your stay. Click
-                                below to start your search.
-                            </p>
-                            <Link
-                                href="/hotels"
-                                className="px-6 py-3 bg-black text-white rounded hover:bg-gray-800 transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-                            >
-                                Go to Hotel Search
-                            </Link>
-                        </div>
-                    )}
-                </section>
-
-                {/* Additional Functionalities */}
-                <section>
-                    <h2 className="text-2xl font-bold mb-4 text-[var(--text)]">
-                        Explore More
-                    </h2>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {/* Itineraries */}
-                        <Link
-                            href="/itineraries"
-                            className="block p-6 card-interactive"
-                        >
-                            <h3 className="text-xl font-semibold mb-2 text-[var(--text)]">
-                                Itineraries
-                            </h3>
-                            <p className="text-[var(--text)]">
-                                View all your trip plans and manage your
-                                bookings.
-                            </p>
-                        </Link>
-                        {/* Create Itinerary */}
-                        <Link
-                            href="/itineraries/new"
-                            className="block p-6 card-interactive"
-                        >
-                            <h3 className="text-xl font-semibold mb-2 text-[var(--text)]">
-                                Create Itinerary
-                            </h3>
-                            <p className="text-[var(--text)]">
-                                Combine your flight and hotel bookings into an
-                                itinerary.
-                            </p>
-                        </Link>
-                        {/* Checkout */}
-                        <Link
-                            href="/checkout"
-                            className="block p-6 card-interactive"
-                        >
-                            <h3 className="text-xl font-semibold mb-2 text-[var(--text)]">
-                                Checkout
-                            </h3>
-                            <p className="text-[var(--text)]">
-                                Review your order summary and complete your
-                                booking.
-                            </p>
-                        </Link>
-                        {/* Flight Bookings */}
-                        <Link
-                            href="/user/flight-bookings"
-                            className="block p-6 card-interactive"
-                        >
-                            <h3 className="text-xl font-semibold mb-2 text-[var(--text)]">
-                                Flight Bookings
-                            </h3>
-                            <p className="text-[var(--text)]">
-                                View details of your flight reservations.
-                            </p>
-                        </Link>
-                        {/* Hotel Bookings */}
-                        <Link
-                            href="/user/hotel-bookings"
-                            className="block p-6 card-interactive"
-                        >
-                            <h3 className="text-xl font-semibold mb-2 text-[var(--text)]">
-                                Hotel Bookings
-                            </h3>
-                            <p className="text-[var(--text)]">
-                                Check your hotel reservations and manage
-                                changes.
-                            </p>
-                        </Link>
-                        {/* Hotel Management */}
-                        <Link
-                            href="/hotels/owner"
-                            className="block p-6 card-interactive"
-                        >
-                            <h3 className="text-xl font-semibold mb-2 text-[var(--text)]">
-                                Hotel Management
-                            </h3>
-                            <p className="text-[var(--text)]">Manage your hotels.</p>
-                        </Link>
-                    </div>
-                </section>
-            </main>
-
-            {/* Footer always at bottom */}
-            <footer className="bg-[var(--background)] text-center p-4">
-                <p className="text-sm text-[var(--text)]">
-                    &copy; {new Date().getFullYear()} FlyNext. All rights
-                    reserved.
-                </p>
-            </footer>
-        </div>
-    );
+  return <div className="home-page">
+    <section className="hero-grid">
+      <div className="hero-copy">
+        <p className="eyebrow">A little planning. A world of possibility.</p>
+        <h1>Your next chapter<br />starts with a trip.</h1>
+        <p className="hero-description">Find your flight, discover a place to stay, and bring it all together. One thoughtful space for every part of your journey.</p>
+        <div className="flex flex-wrap gap-3 mt-8"><Link className="button-primary" href="/flights">Explore flights →</Link><Link className="button-secondary" href="/hotels">Find a stay</Link></div>
+        <p className="mt-6 text-sm muted">A travel booking demo. Real exploration, simulated payments.</p>
+      </div>
+      <div className="journey-art" aria-label="Illustration of a journey from city to coast" role="img">
+        <div className="art-sun" /><div className="art-mountain mountain-back" /><div className="art-mountain mountain-front" />
+        <svg viewBox="0 0 500 400" className="art-route" aria-hidden="true"><path d="M60 320 Q100 100 270 180 T440 70" fill="none" stroke="currentColor" strokeWidth="2" strokeDasharray="7 8" /><circle cx="60" cy="320" r="6" fill="currentColor" /><path d="m420 77 25-22-8 32-7-9-10-1Z" fill="currentColor" /></svg>
+        <div className="art-caption"><span className="eyebrow">THE JOURNEY IS YOURS</span><strong>Go somewhere new.</strong><span>Flights. Stays. Everything in place.</span></div><span className="art-coordinate">43° N / 79° W</span>
+      </div>
+    </section>
+    <section className="journey-steps" aria-label="How FlyNext works">
+      {[
+        ["01", "Find your way", "Compare flight routes and choose a stay for your dates.", "/flights", "Start searching"],
+        ["02", "Make it a trip", "Reserve first, then link your flight and hotel in one itinerary.", "/itineraries/new", "Build an itinerary"],
+        ["03", "Keep it together", "Review your plans, confirm with DEMO payment, and download a receipt.", "/itineraries", "View my trips"],
+      ].map(([number, title, copy, href, action]) => <Link className="step-card" href={href} key={number}><span className="step-number">{number}</span><h2>{title}</h2><p>{copy}</p><span className="step-action">{action} →</span></Link>)}
+    </section>
+    <section className="host-banner"><div><p className="eyebrow">A SPACE FOR HOSTS, TOO</p><h2>Great stays start with you.</h2><p className="muted">Manage your properties, room availability and guest reservations.</p></div><Link className="button-secondary" href="/hotels/owner">Open host workspace</Link></section>
+  </div>;
 }

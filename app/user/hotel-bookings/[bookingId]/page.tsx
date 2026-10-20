@@ -1,10 +1,14 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { loginUrl } from "@/app/lib/return-path";
+
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
+import { useState, useEffect, useCallback } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 import { clearAccessToken } from "@/app/lib/session";
-import { formatLegDate, hotelReference, stayNights } from "@/app/lib/booking-display";
+import { formatStayDate, formatLegDate, hotelReference, stayNights } from "@/app/lib/booking-display";
 import { useFeedback } from "@/app/context/FeedbackContext";
 
 interface HotelBookingDetail {
@@ -36,7 +40,7 @@ export default function HotelBookingDetailsPage() {
     const params = useParams();
     const { confirm, success, error: toastError, info } = useFeedback();
     const [booking, setBooking] = useState<HotelBookingDetail | null>(null);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
     const [actionLoading, setActionLoading] = useState(false);
 
@@ -48,13 +52,13 @@ export default function HotelBookingDetailsPage() {
      * session starts the refresh flow immediately instead of rendering "Booking
      * not found" for a booking that exists.
      */
-    const refreshToken = async () => {
-        const token = localStorage.getItem("accessToken");
+    const refreshToken = useCallback(async () => {
+        const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
-        const response = await fetch("/api/user", {
+        const response = await sessionFetch("/api/user", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -68,12 +72,12 @@ export default function HotelBookingDetailsPage() {
             router.push("/auth/refresh");
             return;
         }
-    };
+    }, [router]);
 
     useEffect(() => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
         refreshToken();
@@ -82,7 +86,7 @@ export default function HotelBookingDetailsPage() {
             setLoading(true);
             setError("");
             try {
-                const res = await fetch(
+                const res = await sessionFetch(
                     `/api/user/hotel-bookings/${params.bookingId}`,
                     {
                         method: "GET",
@@ -120,7 +124,7 @@ export default function HotelBookingDetailsPage() {
         };
 
         fetchBooking();
-    }, [params.bookingId, router, toastError]);
+    }, [params.bookingId, router, refreshToken, toastError]);
 
     const parseAmenities = (amenitiesString: string | null) => {
         if (!amenitiesString) return [];
@@ -153,9 +157,9 @@ export default function HotelBookingDetailsPage() {
      * cancelling it would do.
      */
     const handleCancelBooking = async () => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
 
@@ -175,7 +179,7 @@ export default function HotelBookingDetailsPage() {
             points: [
                 "The room is released and those nights can be sold to somebody else.",
                 "Any itinerary total that includes this stay is reduced by its price.",
-                "Re-booking later means paying whatever the rate is then.",
+                "A new reservation uses the rate available at that time. No money is charged in this demo.",
             ],
             confirmLabel: "Yes, cancel booking",
             cancelLabel: "Keep my booking",
@@ -188,7 +192,7 @@ export default function HotelBookingDetailsPage() {
         const pending = info("Cancelling your booking…", { duration: 0 });
 
         try {
-            const res = await fetch(
+            const res = await sessionFetch(
                 `/api/user/hotel-bookings/${params.bookingId}`,
                 {
                     method: "DELETE",
@@ -217,7 +221,7 @@ export default function HotelBookingDetailsPage() {
             });
 
             // Refresh booking data
-            const bookingRes = await fetch(
+            const bookingRes = await sessionFetch(
                 `/api/user/hotel-bookings/${params.bookingId}`,
                 {
                     headers: {
@@ -248,20 +252,20 @@ export default function HotelBookingDetailsPage() {
         }
     };
 
-    if (loading) return <div className="max-w-4xl mx-auto p-8">Loading...</div>;
+    if (loading) return <div className="page-shell">Loading...</div>;
     if (error)
         return (
-            <div className="max-w-4xl mx-auto p-8 text-red-600 dark:text-red-400">
+            <div className="page-shell text-red-600 dark:text-red-400">
                 {error}
             </div>
         );
     if (!booking)
-        return <div className="max-w-4xl mx-auto p-8">Booking not found</div>;
+        return <div className="page-shell">Booking not found</div>;
 
     const amenities = parseAmenities(booking.room.amenities);
 
     return (
-        <div className="card max-w-4xl mx-auto p-8 text-black dark:text-zinc-100">
+        <div className="card page-shell text-black dark:text-zinc-100">
             <div className="mb-6">
                 <Link
                     href="/user/hotel-bookings"
@@ -310,7 +314,7 @@ export default function HotelBookingDetailsPage() {
                                 Check-In
                             </h3>
                             <p className="text-gray-700 dark:text-zinc-200">
-                                {formatLegDate(booking.checkIn)}
+                                {formatStayDate(booking.checkIn)}
                             </p>
                         </div>
 
@@ -319,7 +323,7 @@ export default function HotelBookingDetailsPage() {
                                 Check-Out
                             </h3>
                             <p className="text-gray-700 dark:text-zinc-200">
-                                {formatLegDate(booking.checkOut)}
+                                {formatStayDate(booking.checkOut)}
                             </p>
                             {(() => {
                                 const nights = stayNights(

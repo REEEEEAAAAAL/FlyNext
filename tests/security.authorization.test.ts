@@ -31,6 +31,8 @@ import { DELETE as deleteItinerary } from "@/app/api/itineraries/[itineraryId]/r
 import { GET as getOwnerHotels } from "@/app/api/hotels/owner/route";
 import { POST as createItinerary } from "@/app/api/itineraries/route";
 import { GET as getProfile } from "@/app/api/user/route";
+import { GET as getPublicRoom } from "@/app/api/hotels/[hotelId]/room-types/[roomTypeId]/route";
+import { GET as getOwnerRoomReservations } from "@/app/api/hotels/[hotelId]/room-types/[roomTypeId]/reservations/route";
 import { disconnect, prisma, resetDatabase } from "#support/db";
 import {
   createFlightReservation,
@@ -375,5 +377,53 @@ describe("owner gate on the owner dashboard", () => {
     const body = await readJson<{ reservations: { id: number }[] }>(response);
 
     expect(body.reservations.map((row) => row.id)).toEqual([own.id]);
+  });
+});
+
+describe("B01 public room and owner guest-data boundary", () => {
+  it("never exposes reservations publicly, including with an owner's token", async () => {
+    const owner = await createUser({ IsHotelOwner: true });
+    const guest = await createUser({ firstName: "PrivateGuest", lastName: "HiddenSurname" });
+    const hotel = await createHotel({ ownerId: owner.id });
+    const room = await createRoomType({ hotelId: hotel.id });
+    await createHotelReservation({ userId: guest.id, hotelId: hotel.id, roomTypeId: room.id, checkIn: tomorrow(), checkOut: new Date(tomorrow().getTime() + 86400000) });
+    for (const token of [null, tokenFor(owner.id), tokenFor(guest.id)]) {
+      const response = await callRoute(getPublicRoom, { params: { hotelId: String(hotel.id), roomTypeId: String(room.id) }, token });
+      expect(response.status).toBe(200);
+      const body = await readJson<{ roomType: Record<string, unknown>; availabilityRecords: unknown[] }>(response);
+      expect(Object.keys(body.roomType).sort()).toEqual(["id", "name", "amenities", "pricePerNight", "images", "currentAvailability", "hotelId"].sort());
+      expect(JSON.stringify(body)).not.toMatch(/reservations|guestName|userId|PrivateGuest|HiddenSurname|checkIn|checkOut/);
+      expect(typeof body.roomType.pricePerNight).toBe("number");
+    }
+  });
+
+  it("only permits the actual owner, scopes both route IDs, and returns minimal guest fields", async () => {
+    const owner = await createUser({ IsHotelOwner: true });
+    const otherOwner = await createUser({ IsHotelOwner: true });
+    const guest = await createUser({ firstName: "PrivateGuest", lastName: "HiddenSurname" });
+    const hotel = await createHotel({ ownerId: owner.id });
+    const otherHotel = await createHotel({ ownerId: otherOwner.id });
+    const room = await createRoomType({ hotelId: hotel.id });
+    const otherRoom = await createRoomType({ hotelId: otherHotel.id });
+    const reservation = await createHotelReservation({ userId: guest.id, hotelId: hotel.id, roomTypeId: room.id, checkIn: tomorrow(), checkOut: new Date(tomorrow().getTime() + 86400000) });
+    const params = { hotelId: String(hotel.id), roomTypeId: String(room.id) };
+    for (const [token, status] of [[null, 401], ["invalid", 401], [tokenFor(guest.id), 403], [tokenFor(otherOwner.id), 403]] as const) {
+      const response = await callRoute(getOwnerRoomReservations, { params, token });
+      expect(response.status).toBe(status);
+      expect(await response.text()).not.toContain("PrivateGuest");
+    }
+    const response = await callRoute(getOwnerRoomReservations, { params, token: tokenFor(owner.id) });
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    const body = await readJson<{ reservations: { id: number; guestName: string; price: number }[] }>(response);
+    expect(body.reservations).toHaveLength(1);
+    expect(body.reservations[0]).toMatchObject({ id: reservation.id, guestName: "PrivateGuest HiddenSurname" });
+    expect(typeof body.reservations[0].price).toBe("number");
+    expect(JSON.stringify(body)).not.toContain(guest.email);
+    expect(JSON.stringify(body)).not.toContain("password");
+    const mismatch = await callRoute(getOwnerRoomReservations, { params: { ...params, roomTypeId: String(otherRoom.id) }, token: tokenFor(owner.id) });
+    expect(mismatch.status).toBe(404);
+    await prisma.hotel.update({ where: { id: hotel.id }, data: { ownerId: otherOwner.id } });
+    expect((await callRoute(getOwnerRoomReservations, { params, token: tokenFor(owner.id) })).status).toBe(403);
   });
 });

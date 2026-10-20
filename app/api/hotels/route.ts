@@ -28,6 +28,9 @@ import {
 } from "@/lib/api/validation";
 import { DEFAULT_TRANSACTION_OPTIONS, prisma } from "@/lib/prisma";
 import type { HotelWithRoomTypes } from "@/types";
+import { AVAILABILITY_HORIZON_ERROR, eachNight, isWithinAvailabilityHorizon, parseStayRange } from "@/lib/api/validation";
+import { nightlyAvailability } from "@/lib/hotel-inventory";
+import { money } from "@/lib/booking-locks";
 
 /** Star ratings are constrained to the 1–5 scale the UI renders as ★/☆. */
 const MIN_STARS = 1;
@@ -46,8 +49,14 @@ function readFilter(searchParams: URLSearchParams, field: string): string {
 }
 
 export const GET = withRoute(async (request) => {
-	enforceRateLimit(request, "publicRead");
+	await enforceRateLimit(request, "publicRead");
 	const { searchParams } = new URL(request.url);
+	const checkIn = searchParams.get("checkIn");
+	const checkOut = searchParams.get("checkOut");
+	if (Boolean(checkIn) !== Boolean(checkOut)) throw badRequest("Both checkIn and checkOut are required");
+	const stay = checkIn && checkOut ? parseStayRange(checkIn, checkOut) : null;
+	const dates = stay ? eachNight(stay.checkIn, stay.checkOut) : [];
+	if (dates.some(date => !isWithinAvailabilityHorizon(date))) throw badRequest(AVAILABILITY_HORIZON_ERROR);
 
 	const city = readFilter(searchParams, "city");
 	const name = readFilter(searchParams, "name");
@@ -91,13 +100,22 @@ export const GET = withRoute(async (request) => {
 
 	// The client reads `data.hotels` with a `|| []` fallback, but the payload is
 	// always well formed.
-	const payload: { hotels: HotelWithRoomTypes[] } = { hotels };
+	const results = await Promise.all(hotels.map(async hotel => ({
+		...hotel,
+		roomTypes: (await Promise.all(hotel.roomTypes.map(async room => {
+			const pricePerNight = money(room.pricePerNight);
+			if (!stay) return { ...room, pricePerNight, availableRooms: null, nights: null, stayTotal: null, currency: "USD" as const };
+			const rows = await nightlyAvailability(prisma, room, dates);
+			return { ...room, pricePerNight, availableRooms: Math.min(...rows.map(row => row.availability)), nights: stay.nights, stayTotal: money(pricePerNight * stay.nights), currency: "USD" as const };
+		}))).filter(room => (room.availableRooms === null || room.availableRooms > 0) && (priceMin === undefined || room.pricePerNight >= priceMin) && (priceMax === undefined || room.pricePerNight <= priceMax)),
+	})));
+	const payload: { hotels: HotelWithRoomTypes[] } = { hotels: results.filter(hotel => !stay || hotel.roomTypes.length > 0) };
 	return jsonOk(payload);
 });
 
 export const POST = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "bookingWrite");
+	await enforceRateLimit(request, "bookingWrite");
 	const formData = await request.formData();
 
 	// Required text fields, in the order the error message lists them.
@@ -113,12 +131,9 @@ export const POST = withRoute(async (request) => {
 	const logoFiles = readFormFiles(formData, "logo");
 	const imagesFiles = readFormFiles(formData, "images");
 
-	const [logoUrl, imagesUrls] = await Promise.all([
-		logoFiles.length > 0
-			? saveImageUploads(logoFiles, "hotels").then((urls) => urls[0])
-			: Promise.resolve("/hotel-logo-default.svg"),
-		saveImageUploads(imagesFiles, "hotels"),
-	]);
+	if (logoFiles.length > 1) throw badRequest("Only one hotel logo is allowed.");
+	const logoUrl = logoFiles.length ? (await saveImageUploads(logoFiles, "hotels"))[0] : "/hotel-logo-default.svg";
+	const imagesUrls = await saveImageUploads(imagesFiles, "hotels");
 
 	const hotel = await prisma.$transaction(async (tx) => {
 		const created = await tx.hotel.create({

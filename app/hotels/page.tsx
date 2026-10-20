@@ -1,10 +1,18 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { loginUrl } from "@/app/lib/return-path";
+
+import { acknowledgeBooking, bookingRequest } from "@/app/lib/booking-request";
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
+import LocationCombobox from "@/app/components/LocationCombobox";
+import BookingSteps from "@/app/components/BookingSteps";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useFeedback } from "@/app/context/FeedbackContext";
 import { stayNights } from "@/app/lib/booking-display";
+import { addDays, atMidnight, AVAILABILITY_HORIZON_DAYS, AVAILABILITY_HORIZON_ERROR, isStayWithinAvailabilityHorizon } from "@/lib/api/validation";
 
 // Hotel interfaces
 interface Hotel {
@@ -13,8 +21,11 @@ interface Hotel {
     address: string;
     location: string;
     starRating: number;
+    images?: string[];
     roomTypes: RoomType[];
 }
+
+const EMPTY_HOTEL_FILTERS = { name: "", starRating: "", priceMin: "", priceMax: "" };
 
 interface RoomType {
     id: number;
@@ -22,12 +33,10 @@ interface RoomType {
     amenities: string | null;
     pricePerNight: number;
     currentAvailability: number;
-}
-
-interface City {
-    id: number;
-    name: string;
-    country: string;
+    availableRooms?: number | null;
+    nights?: number | null;
+    stayTotal?: number | null;
+    currency?: string;
 }
 
 export default function HotelSearchPage() {
@@ -36,121 +45,67 @@ export default function HotelSearchPage() {
     const [city, setCity] = useState("");
     const [checkIn, setCheckIn] = useState("");
     const [checkOut, setCheckOut] = useState("");
+    useEffect(() => {
+        const saved = new URLSearchParams(window.location.search);
+        setCity(saved.get("city") ?? ""); setCheckIn(saved.get("checkIn") ?? ""); setCheckOut(saved.get("checkOut") ?? "");
+    }, []);
+
+    const [availabilityStay, setAvailabilityStay] = useState("");
+    const [filters, setFilters] = useState(EMPTY_HOTEL_FILTERS);
     const [hotels, setHotels] = useState<Hotel[]>([]);
     const [error, setError] = useState("");
-    const [loading, setLoading] = useState(false);
+    const [lastReservation, setLastReservation] = useState<{ id: number; checkIn: string; checkOut: string } | null>(null);
+    const [loading, setLoading] = useState(true);
     const [bookingStatus, setBookingStatus] = useState<{
         [key: string]: "idle" | "loading" | "success" | "error";
     }>({});
 
-    // Auto-suggest state for cities
-    const [citySuggestions, setCitySuggestions] = useState<City[]>([]);
-    const [showCityDropdown, setShowCityDropdown] = useState(false);
-
-    // Fetch all hotels on initial load
-    useEffect(() => {
-        const fetchAllHotels = async () => {
-            setLoading(true);
-            try {
-                const res = await fetch(`/api/hotels`, {
-                    method: "GET",
-                });
-
-                if (!res.ok) {
-                    const data = await res.json();
-                    setError(data.error || "Error fetching hotels.");
-                } else {
-                    const data = await res.json();
-                    setHotels(data.hotels || []);
-                }
-            } catch (err) {
-                setError("An error occurred while fetching hotels.");
-            } finally {
-                setLoading(false);
-            }
-        };
-
-        fetchAllHotels();
+    const searchVersion = useRef(0);
+    const searchController = useRef<AbortController | null>(null);
+    const loadHotels = useCallback(async (selectedCity = "", arrival = "", departure = "", selectedFilters = EMPTY_HOTEL_FILTERS) => {
+        const version = ++searchVersion.current;
+        searchController.current?.abort();
+        const controller = new AbortController();
+        searchController.current = controller;
+        setLoading(true); setError("");
+        try {
+            const query = new URLSearchParams({ city: selectedCity, checkIn: arrival, checkOut: departure, ...selectedFilters });
+            const response = await sessionFetch(`/api/hotels?${query}`, { signal: controller.signal });
+            const data = await response.json();
+            if (!response.ok) throw new Error(data.error || "Could not load stays. Please try again.");
+            if (version !== searchVersion.current || controller.signal.aborted) return;
+            setHotels(data.hotels || []);
+            setAvailabilityStay(arrival && departure ? `${arrival}/${departure}` : "");
+        } catch (failure) {
+            if (!controller.signal.aborted && version === searchVersion.current) setError(failure instanceof Error ? failure.message : "Could not load stays.");
+        } finally {
+            if (!controller.signal.aborted && version === searchVersion.current) setLoading(false);
+        }
     }, []);
+    useEffect(() => {
+        const saved = new URLSearchParams(window.location.search);
+        const arrival = saved.get("checkIn") ?? ""; const departure = saved.get("checkOut") ?? "";
+        void loadHotels(saved.get("city") ?? "", arrival, departure, EMPTY_HOTEL_FILTERS);
+        return () => { searchVersion.current += 1; searchController.current?.abort(); };
+    }, [loadHotels]);
 
     // Redirect to login if not logged in
     const ensureLoggedIn = (): boolean => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl(`/hotels?${new URLSearchParams({ city, checkIn, checkOut })}`));
             return false;
         }
         return true;
     };
 
-    // Fetch city suggestions from the backend
-    const fetchCitySuggestions = async (query: string): Promise<City[]> => {
-        try {
-            const res = await fetch(
-                `/api/locations/cities?q=${encodeURIComponent(query)}`,
-                {
-                    method: "GET",
-                    headers: { "Content-Type": "application/json" },
-                }
-            );
-            if (res.ok) {
-                const data = await res.json();
-                return data.cities || [];
-            }
-        } catch (err) {
-            console.error("Error fetching city suggestions:", err);
-        }
-        return [];
-    };
-
-    const handleCityChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        const value = e.target.value;
-        setCity(value);
-        if (value.length >= 2) {
-            const suggestions = await fetchCitySuggestions(value);
-            setCitySuggestions(suggestions);
-            setShowCityDropdown(true);
-        } else {
-            setCitySuggestions([]);
-            setShowCityDropdown(false);
-        }
-    };
-
-    const selectCitySuggestion = (selectedCity: City) => {
-        setCity(selectedCity.name);
-        setCitySuggestions([]);
-        setShowCityDropdown(false);
-    };
-
-    const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
-        setError("");
-        setLoading(true);
+    const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        if ((stayNights(checkIn, checkOut) ?? 0) < 1) { setError("Check-out must be after check-in."); return; }
+        if (!isStayWithinAvailabilityHorizon(new Date(`${checkIn}T00:00:00.000Z`), new Date(`${checkOut}T00:00:00.000Z`))) { setError(AVAILABILITY_HORIZON_ERROR); return; }
+        if (filters.priceMin && filters.priceMax && Number(filters.priceMin) > Number(filters.priceMax)) { setError("Maximum nightly rate must be at least the minimum."); return; }
         setBookingStatus({});
-
-        try {
-            const query = new URLSearchParams({
-                city,
-                checkIn,
-                checkOut,
-            }).toString();
-
-            const res = await fetch(`/api/hotels?${query}`, {
-                method: "GET",
-            });
-
-            if (!res.ok) {
-                const data = await res.json();
-                setError(data.error || "Error fetching hotels.");
-            } else {
-                const data = await res.json();
-                setHotels(data.hotels || []);
-            }
-        } catch (err) {
-            setError("An error occurred while searching for hotels.");
-        } finally {
-            setLoading(false);
-        }
+        void loadHotels(city, checkIn, checkOut, filters);
     };
 
     // Render star rating as stars
@@ -164,6 +119,9 @@ export default function HotelSearchPage() {
     };
 
     const nights = calculateNights();
+    const today = atMidnight(new Date());
+    const latestCheckIn = addDays(today, AVAILABILITY_HORIZON_DAYS).toISOString().slice(0, 10);
+    const latestCheckOut = addDays(today, AVAILABILITY_HORIZON_DAYS + 1).toISOString().slice(0, 10);
 
     /**
      * Book one room type for the selected dates.
@@ -191,6 +149,7 @@ export default function HotelSearchPage() {
             return;
         }
 
+        const bookingSearchVersion = searchVersion.current;
         setBookingStatus((prev) => ({
             ...prev,
             [`${hotelId}-${roomTypeId}`]: "loading",
@@ -200,18 +159,14 @@ export default function HotelSearchPage() {
         // a timer, so a slow booking still says what is happening.
         const pending = info("Reserving your room…", { duration: 0 });
 
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         try {
-            const res = await fetch("/api/hotels/book", {
+            const res = await bookingRequest("/api/hotels/book", {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     Authorization: `Bearer ${token}`,
                 },
-                // The API reads these two ids with `readString` before parsing
-                // them as positive integers, so they must be sent as JSON
-                // strings: a raw number is rejected with
-                // `Field "hotelId" must be a string`.
                 body: JSON.stringify({
                     hotelId: String(hotelId),
                     roomTypeId: String(roomTypeId),
@@ -226,7 +181,7 @@ export default function HotelSearchPage() {
                 // as a fallback for responses that predate that field.
                 toastError("Booking failed", {
                     description:
-                        data?.error || data?.message || "Unknown error",
+                        res.status >= 500 ? "The result is unknown. Retry with the same dates or check My Hotel Bookings before starting a new booking." : data?.error || data?.message || "Unknown error",
                 });
                 setBookingStatus((prev) => ({
                     ...prev,
@@ -237,30 +192,9 @@ export default function HotelSearchPage() {
 
             const data = await res.json();
 
-            try {
-                const query = new URLSearchParams({
-                    city,
-                    checkIn,
-                    checkOut,
-                }).toString();
+            if (bookingSearchVersion === searchVersion.current) await loadHotels(city, checkIn, checkOut);
 
-                const refresh = await fetch(`/api/hotels?${query}`, {
-                    method: "GET",
-                });
-
-                if (!refresh.ok) {
-                    const failure = await refresh.json().catch(() => null);
-                    setError(failure?.error || "Error fetching hotels.");
-                } else {
-                    const refreshed = await refresh.json();
-                    setHotels(refreshed.hotels || []);
-                }
-            } catch (err) {
-                setError("An error occurred while searching for hotels.");
-            } finally {
-                setLoading(false);
-            }
-
+            setLastReservation({ id: data.reservation.id, checkIn, checkOut });
             success("Room booked", {
                 description: `Reservation #${data.reservation.id} is confirmed for ${nights} ${
                     nights === 1 ? "night" : "nights"
@@ -270,9 +204,10 @@ export default function HotelSearchPage() {
                 ...prev,
                 [`${hotelId}-${roomTypeId}`]: "success",
             }));
+            await acknowledgeBooking("/api/hotels/book", { hotelId: String(hotelId), roomTypeId: String(roomTypeId), checkIn, checkOut });
         } catch (err) {
             toastError("Booking failed", {
-                description: "An error occurred while booking the hotel.",
+                description: "The result is unknown. Retry with the same dates or check My Hotel Bookings.",
             });
             setBookingStatus((prev) => ({
                 ...prev,
@@ -297,10 +232,11 @@ export default function HotelSearchPage() {
 
         return (
             <div className="mt-4 space-y-3">
-                <h3 className="font-semibold text-lg text-gray-900 dark:text-zinc-100">Available Room Types:</h3>
+                <h3 className="font-semibold text-lg text-gray-900 dark:text-zinc-100">Room options</h3>
                 {hotel.roomTypes.map((roomType) => {
                     const bookingKey = `${hotel.id}-${roomType.id}`;
                     const isBooking = bookingStatus[bookingKey] === "loading";
+                    const available = availabilityStay === `${checkIn}/${checkOut}` ? roomType.availableRooms : null;
                     const isBooked = bookingStatus[bookingKey] === "success";
 
                     return (
@@ -308,7 +244,7 @@ export default function HotelSearchPage() {
                             key={roomType.id}
                             className="p-3 rounded-lg border border-gray-300 bg-white dark:border-white/10 dark:bg-white/5"
                         >
-                            <div className="flex justify-between">
+                            <div className="hotel-room-summary flex justify-between gap-4">
                                 <div>
                                     <p className="font-medium text-gray-900 dark:text-zinc-100">
                                         {roomType.name}
@@ -325,16 +261,17 @@ export default function HotelSearchPage() {
                                         <span className="font-medium">
                                             Available:
                                         </span>{" "}
-                                        {roomType.currentAvailability} rooms
+                                        {available == null ? "Select dates for availability" : `${available} ${available === 1 ? "room" : "rooms"} available for your stay`}
                                     </p>
                                 </div>
                                 <div className="text-right">
                                     <p className="font-bold text-lg text-gray-900 dark:text-zinc-100">
-                                        ${roomType.pricePerNight}/night
+                                        ${roomType.pricePerNight.toFixed(2)} USD/night
                                     </p>
                                     {nights > 0 && (
                                         <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">
-                                            ${roomType.pricePerNight * nights}{" "}
+                                            {available == null ? "Estimated " : ""}
+                                            ${(available == null ? roomType.pricePerNight * nights : roomType.stayTotal ?? roomType.pricePerNight * nights).toFixed(2)} USD{" "}
                                             total for {nights}{" "}
                                             {nights === 1 ? "night" : "nights"}
                                         </p>
@@ -348,13 +285,13 @@ export default function HotelSearchPage() {
                                                 )
                                             }
                                             disabled={
-                                                roomType.currentAvailability <=
+                                                (available ?? 0) <=
                                                     0 ||
                                                 isBooking ||
                                                 isBooked
                                             }
                                             className={`mt-2 px-4 py-1 rounded text-white transition-colors ${
-                                                roomType.currentAvailability <=
+                                                (available ?? 0) <=
                                                 0
                                                     ? "bg-gray-400 cursor-not-allowed dark:bg-zinc-600 dark:text-zinc-300"
                                                     : isBooked
@@ -364,9 +301,11 @@ export default function HotelSearchPage() {
                                         >
                                             {isBooking
                                                 ? "Booking..."
+                                                : available == null
+                                                ? "Search selected dates"
                                                 : isBooked
                                                 ? "Booked!"
-                                                : roomType.currentAvailability <=
+                                                : (available ?? 0) <=
                                                   0
                                                 ? "Unavailable"
                                                 : "Book Now"}
@@ -382,95 +321,69 @@ export default function HotelSearchPage() {
     };
     
     return (
-        <div className="max-w-4xl mx-auto p-8 card">
+        <div className="page-shell card">
+            <BookingSteps current="reserve" />
             <h1 className="text-3xl font-bold mb-6 heading">
-                Hotel Search
+                Find your place to stay
             </h1>
+            <p className="search-intro">Choose your dates to see availability for your entire stay, nightly rates and the total in USD.</p>
 
             {/* Search form */}
             <form
                 onSubmit={handleSubmit}
-                className="mb-8 grid grid-cols-1 sm:grid-cols-3 gap-4"
+                className="search-form mb-8 grid grid-cols-1 sm:grid-cols-3 gap-4"
             >
-                <div className="relative flex flex-col">
-                    <label className="label mb-1">City:</label>
-                    <input
-                        type="text"
-                        value={city}
-                        onChange={handleCityChange}
-                        placeholder="e.g., Toronto"
-                        required
-                        className="field"
-                        onFocus={() =>
-                            city.length >= 2 && setShowCityDropdown(true)
-                        }
-                        onBlur={() =>
-                            setTimeout(() => setShowCityDropdown(false), 150)
-                        }
-                    />
-                    {showCityDropdown && citySuggestions.length > 0 && (
-                        <ul className="absolute z-10 w-full max-h-60 overflow-y-auto top-full floating">
-                            {citySuggestions.map((suggestion) => (
-                                <li
-                                    key={suggestion.id}
-                                    onClick={() =>
-                                        selectCitySuggestion(suggestion)
-                                    }
-                                    className="p-2 cursor-pointer row-hover"
-                                >
-                                    {suggestion.name} ({suggestion.country})
-                                </li>
-                            ))}
-                        </ul>
-                    )}
-                </div>
+                <LocationCombobox label="Destination" kind="cities" value={city} onChange={setCity} placeholder="Which city?" />
                 <div className="flex flex-col">
-                    <label className="label mb-1">Check-In Date:</label>
+                    <label htmlFor="check-in" className="label mb-1">Check-in:</label>
                     <input
+                        id="check-in"
                         type="date"
                         value={checkIn}
+                        max={latestCheckIn}
                         onChange={(e) => setCheckIn(e.target.value)}
                         required
                         className="field"
                     />
                 </div>
                 <div className="flex flex-col">
-                    <label className="label mb-1">
-                        Check-Out Date:
+                    <label htmlFor="check-out" className="label mb-1">
+                        Check-out:
                     </label>
                     <input
+                        id="check-out"
                         type="date"
+                        min={checkIn || undefined}
+                        max={latestCheckOut}
                         value={checkOut}
                         onChange={(e) => setCheckOut(e.target.value)}
                         required
                         className="field"
                     />
                 </div>
+                <details className="sm:col-span-3">
+                    <summary className="text-sm font-semibold cursor-pointer text-blue-600 dark:text-blue-300">Refine your stay</summary>
+                    <div className="grid sm:grid-cols-2 gap-4 mt-4">
+                        <div><label className="label" htmlFor="hotel-name-filter">Hotel name</label><input className="field" id="hotel-name-filter" value={filters.name} onChange={event => setFilters({ ...filters, name: event.target.value })} placeholder="Any hotel" /></div>
+                        <div><label className="label" htmlFor="hotel-rating-filter">Star rating</label><select className="field" id="hotel-rating-filter" value={filters.starRating} onChange={event => setFilters({ ...filters, starRating: event.target.value })}><option value="">Any rating</option>{[1,2,3,4,5].map(rating => <option key={rating} value={rating}>{rating} stars</option>)}</select></div>
+                        <div><label className="label" htmlFor="hotel-min-price">Minimum nightly rate (USD)</label><input className="field" id="hotel-min-price" type="number" min="0" step="0.01" value={filters.priceMin} onChange={event => setFilters({ ...filters, priceMin: event.target.value })} placeholder="No minimum" /></div>
+                        <div><label className="label" htmlFor="hotel-max-price">Maximum nightly rate (USD)</label><input className="field" id="hotel-max-price" type="number" min="0" step="0.01" value={filters.priceMax} onChange={event => setFilters({ ...filters, priceMax: event.target.value })} placeholder="No maximum" /></div>
+                    </div>
+                    <p className="text-xs muted mt-3">Shows properties with at least one room in your nightly budget. Review each room’s full stay total below.</p>
+                </details>
                 <div className="sm:col-span-3 flex gap-2">
                     <button
                         type="submit"
+                        disabled={loading}
                         className="flex-1 py-3 bg-black text-white rounded hover:bg-gray-800 transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
                     >
-                        Search Hotels
+                        {loading ? "Searching stays…" : "Search stays"}
                     </button>
                     <button
                         type="button"
                         onClick={() => {
-                            setCity("");
-                            setCheckIn("");
-                            setCheckOut("");
-                            setError("");
-                            setLoading(true);
-                            fetch(`/api/hotels`)
-                                .then((res) => res.json())
-                                .then((data) => {
-                                    setHotels(data.hotels || []);
-                                    setLoading(false);
-                                })
-                                .catch((err) => {
-                                    setError("Error fetching all hotels");
-                                    setLoading(false);
-                                });
+                            setCity(""); setCheckIn(""); setCheckOut(""); setBookingStatus({}); setFilters(EMPTY_HOTEL_FILTERS);
+                            void loadHotels("", "", "", EMPTY_HOTEL_FILTERS);
                         }}
                         className="flex-1 py-3 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 dark:ring-1 dark:ring-white/10"
                     >
@@ -479,9 +392,10 @@ export default function HotelSearchPage() {
                 </div>
             </form>
 
+            {lastReservation && <div role="status" className="surface p-5 mb-6"><p className="font-semibold heading">Your stay is reserved</p><p className="muted text-sm mt-1">Reservation #{lastReservation.id} · {lastReservation.checkIn} to {lastReservation.checkOut}. Add this reservation to an itinerary to review and confirm your demo trip.</p><div className="flex flex-wrap gap-3 mt-4"><Link className="button-primary" href="/itineraries/new">Build an itinerary</Link><Link className="button-secondary" href={`/user/hotel-bookings/${lastReservation.id}`}>View reservation</Link></div></div>}
             {/* Loading and error states */}
-            {loading && <p className="muted">Loading hotels...</p>}
-            {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+            {loading && <p role="status" className="muted">Loading hotels...</p>}
+            {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
 
             {/* Hotel results */}
             {hotels.length > 0 && (
@@ -497,7 +411,8 @@ export default function HotelSearchPage() {
                                 key={hotel.id}
                                 className="p-6 surface"
                             >
-                                <div className="flex justify-between items-start mb-4">
+                                {hotel.images?.[0] && <img src={hotel.images[0]} alt={hotel.name} loading="lazy" className="w-full h-48 sm:h-64 object-cover rounded-xl mb-5" />}
+                                <div className="flex flex-wrap gap-4 justify-between items-start mb-4">
                                     <div>
                                         <h3 className="text-xl font-semibold text-gray-800 dark:text-zinc-100">
                                             {hotel.name}
@@ -520,7 +435,7 @@ export default function HotelSearchPage() {
                                             </p>
                                         </div>
                                         <Link
-                                            href={`/hotels/${hotel.id}`}
+                                            href={`/hotels/${hotel.id}${checkIn && checkOut ? `?${new URLSearchParams({checkIn,checkOut})}` : ""}`}
                                             className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors text-sm dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
                                         >
                                             View Details
@@ -535,9 +450,9 @@ export default function HotelSearchPage() {
             )}
 
             {/* No results message */}
-            {!loading && hotels.length === 0 && (
+            {!loading && !error && hotels.length === 0 && (
                 <p className="text-center muted py-4">
-                    No hotels found.
+                    No stays found. Try another city or different dates.
                 </p>
             )}
         </div>

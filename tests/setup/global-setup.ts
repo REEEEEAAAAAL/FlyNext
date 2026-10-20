@@ -10,17 +10,17 @@
  *    number of rows, and one case proves the `(roomTypeId, date)` index exists —
  *    so it runs against the migrated schema rather than an approximation of it.
  *
- * The connection string is checked twice: here, and again when `load-env` is
- * imported. A suite that truncates tables is only safe if pointing it at the
- * development database is impossible, and the check costs nothing.
+ * load-env rejects unsafe targets before connecting. The database identity is
+ * then verified here and at migration/TRUNCATE boundaries before any write.
  */
 
 import { PrismaClient } from "@prisma/client";
 import { applyMigrations } from "#support/migrate";
+import { verifyTestDatabase } from "#support/safety";
+import { migrationDatabaseUrl } from "./test-target";
 
 export async function setup(): Promise<void> {
-	// Import for its side effect: it loads `.env.test` and rejects any other
-	// database name before the first connection is opened.
+	// .env.test is preferred; local is an explicit alternative only.
 	const env = await import("./load-env");
 
 	if (!env.IsTestDatabase) {
@@ -30,8 +30,9 @@ export async function setup(): Promise<void> {
 		);
 	}
 
-	const prisma = new PrismaClient();
+	const prisma = new PrismaClient({ datasourceUrl: migrationDatabaseUrl(process.env.DATABASE_URL!) });
 	try {
+		await verifyTestDatabase(prisma);
 		const applied = await applyMigrations(prisma);
 		if (applied.length > 0) {
 			console.log(

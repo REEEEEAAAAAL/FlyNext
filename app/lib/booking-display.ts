@@ -243,10 +243,17 @@ export function formatLegDate(
 	if (typeof value === "string" && !hasLegValue(value)) return "N/A";
 	const parsed = value instanceof Date ? value : new Date(value);
 	if (Number.isNaN(parsed.getTime())) return "N/A";
-	return options.dateOnly ? parsed.toLocaleDateString() : parsed.toLocaleString();
+	return options.dateOnly ? parsed.toLocaleDateString("en-US") : parsed.toLocaleString("en-US");
 }
 
-/** A whole number of nights between two stay dates, or `null` when unknown. */
+/** Display a hotel calendar date without shifting it to the browser time zone. */
+export function formatStayDate(value: Date | string | null | undefined): string {
+	if (value === null || value === undefined || value === "") return "N/A";
+	const date = value instanceof Date ? value : new Date(value);
+	return Number.isNaN(date.getTime()) ? "N/A" : date.toLocaleDateString("en-US", { timeZone: "UTC" });
+}
+
+/** Return whole calendar nights, or null for an invalid stay. */
 export function stayNights(
 	checkIn: string | Date | null | undefined,
 	checkOut: string | Date | null | undefined

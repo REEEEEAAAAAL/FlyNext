@@ -21,12 +21,13 @@ import { jsonMessage } from "@/lib/api/response";
 import { parseJsonBody, readString, requireEmail } from "@/lib/api/validation";
 import { hashPassword } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { validateImageSource } from "@/lib/api/upload";
 
 /** Minimum accepted password length. */
 const MIN_PASSWORD_LENGTH = 6;
 
 export const POST = withRoute(async (request) => {
-	enforceRateLimit(request, "register");
+	await enforceRateLimit(request, "register");
 
 	const body = await parseJsonBody(request);
 
@@ -69,7 +70,7 @@ export const POST = withRoute(async (request) => {
 			password: hashedPassword,
 			firstName,
 			lastName,
-			profilePic: profilePic ?? null,
+			profilePic: profilePic ? validateImageSource(profilePic) : null,
 			phone: phone ?? null,
 		},
 	});

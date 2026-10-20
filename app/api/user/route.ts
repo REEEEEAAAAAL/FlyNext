@@ -74,7 +74,7 @@ function readClearableFormText(
 
 export const GET = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "profileRead");
+	await enforceRateLimit(request, "profileRead");
 
 	const user = await prisma.user.findUnique({
 		where: { id: userId },
@@ -93,7 +93,7 @@ export const GET = withRoute(async (request) => {
 
 export const PUT = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "profileWrite");
+	await enforceRateLimit(request, "profileWrite");
 	const formData = await request.formData();
 
 	const data: Prisma.UserUpdateInput = {};

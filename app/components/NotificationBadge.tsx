@@ -1,9 +1,11 @@
 "use client";
 
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ACCESS_TOKEN_KEY, subscribeToAccessToken } from "@/app/lib/session";
+import { subscribeToAccessToken } from "@/app/lib/session";
 
 /** How often the badge refreshes while the tab is visible. */
 const POLL_INTERVAL_MS = 5000;
@@ -55,14 +57,14 @@ export default function NotificationBadge() {
             // Read the token on every tick rather than caching it: a `401` puts the
             // loop on hold, and the token that lifts the hold is issued later, by
             // `/auth/login` or `/auth/refresh`.
-            const token = localStorage.getItem(ACCESS_TOKEN_KEY);
+            const token = getAccessToken();
             if (!token) {
                 // Nothing to poll for while logged out.
                 stoppedRef.current = true;
                 return;
             }
 
-            const res = await fetch("/api/notifications/unread-count", {
+            const res = await sessionFetch("/api/notifications/unread-count", {
                 headers: { Authorization: `Bearer ${token}` },
             });
 
@@ -150,7 +152,7 @@ export default function NotificationBadge() {
              * either way — so without this the pill stayed on screen with the last
              * count it saw, next to a "Login" link, until a reload.
              */
-            if (localStorage.getItem(ACCESS_TOKEN_KEY) === null) {
+            if (getAccessToken() === null) {
                 setCount(0);
             }
             void tick();
@@ -173,10 +175,11 @@ export default function NotificationBadge() {
     }, [pathname, fetchNotificationCount]);
 
     return (
-        <Link href="/notifications">
+        <Link href="/notifications" className="button-secondary !p-2" aria-label={`Notifications${count ? `, ${count} unread` : ""}`}>
             <div className="relative cursor-pointer">
                 <svg
-                    className="w-6 h-6 text-white dark:text-zinc-200"
+                    aria-hidden="true"
+                    className="w-5 h-5"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -197,8 +200,8 @@ export default function NotificationBadge() {
                      * changes with the theme is the shade of red — a darker,
                      * less glaring one in dark mode.
                      */
-                    <span className="absolute -top-1 -right-1 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white opacity-100 bg-red-600 rounded-full dark:bg-red-500 dark:text-white">
-                        {count}
+                    <span className="absolute -top-1.5 -right-1.5 inline-flex h-4 min-w-4 items-center justify-center px-0.5 text-[10px] font-semibold leading-none text-white opacity-100 bg-red-600 rounded-full dark:bg-red-500 dark:text-white">
+                        {count > 99 ? "99+" : count}
                     </span>
                 )}
             </div>

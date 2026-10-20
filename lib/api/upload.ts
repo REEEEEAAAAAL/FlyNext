@@ -33,7 +33,41 @@
  */
 
 import { v2 as cloudinary } from "cloudinary";
-import { badGateway, badRequest, toErrorMessage } from "./errors";
+import { badGateway, badRequest } from "./errors";
+import { AsyncLocalStorage } from "node:async_hooks";
+
+interface CreatedAsset { publicId: string; config: CloudinaryConfig }
+const uploadScope = new AsyncLocalStorage<{ assets: CreatedAsset[]; count: number; bytes: number }>();
+export const MAX_IMAGE_COUNT = 12;
+export const MAX_TOTAL_IMAGE_BYTES = 25 * 1024 * 1024;
+
+/** Compensate only assets created in this request, never retained URLs. */
+export async function withUploadCleanup<T>(operation: () => Promise<T>): Promise<T> {
+	return uploadScope.run({ assets: [], count: 0, bytes: 0 }, async () => {
+		try { return await operation(); }
+		catch (error) {
+			for (const { publicId, config } of uploadScope.getStore()!.assets) {
+				const options = { resource_type: "image" as const, cloud_name: config.cloudName, api_key: config.apiKey, api_secret: config.apiSecret };
+				try { await cloudinary.uploader.destroy(publicId, options); }
+				catch { console.error("[upload] compensation failed; operator cleanup required (asset details withheld)."); }
+			}
+			throw error;
+		}
+	});
+}
+
+/** Retained media must use bundled defaults or this account's image delivery path. */
+export function validateImageSource(value: string): string {
+	if (["/hotel-logo-default.svg", "/user-profile-default.svg"].includes(value)) return value;
+	if (isUploadMocked() && /^\/uploads\/[A-Za-z0-9/_-]+\.(jpg|png|webp)$/.test(value)) return value;
+	try {
+		const url = new URL(value);
+		const cloud = readCloudinaryConfig()?.cloudName;
+		if (cloud && url.protocol === "https:" && url.hostname === "res.cloudinary.com" && !url.port && !url.username && !url.password && !url.search && !url.hash &&
+			url.pathname.startsWith(`/${cloud}/image/upload/`) && !/%|\.\./.test(url.pathname)) return value;
+	} catch { /* fixed public validation message below */ }
+	throw badRequest("Unsupported image source.");
+}
 
 /** Upload buckets, used as the Cloudinary sub-folder for each kind of image. */
 export type UploadBucket = "hotels" | "roomTypes" | "userProfiles";
@@ -307,7 +341,7 @@ async function uploadBuffer(
 		crypto.randomUUID()
 	);
 
-	const uploaded = await new Promise<{ url: string; secureUrl: string }>(
+	const uploaded = await new Promise<{ url: string; secureUrl: string; publicId: string }>(
 		(resolve, reject) => {
 			const stream = cloudinary.uploader.upload_stream(
 				{
@@ -344,13 +378,14 @@ async function uploadBuffer(
 						reject(new Error("Cloudinary returned no result"));
 						return;
 					}
-					resolve({ url: result.url, secureUrl: result.secure_url });
+					resolve({ url: result.url, secureUrl: result.secure_url, publicId: result.public_id });
 				}
 			);
 			stream.on("error", reject);
 			stream.end(buffer);
 		}
 	);
+	uploadScope.getStore()?.assets.push({ publicId: uploaded.publicId, config });
 
 	// A project with "strict secure distribution" disabled can be answered with an
 	// `http://` `secure_url`; upgrade rather than storing a mixed-content URL that
@@ -370,6 +405,11 @@ export async function saveImageUpload(
 	file: File,
 	bucket: UploadBucket
 ): Promise<string> {
+	const scope = uploadScope.getStore();
+	if (scope) {
+		scope.count++; scope.bytes += file.size;
+		if (scope.count > MAX_IMAGE_COUNT || scope.bytes > MAX_TOTAL_IMAGE_BYTES) throw badRequest("Images exceed the request limit (12 images, 25MB total).");
+	}
 	const format = ALLOWED_IMAGE_TYPES[file.type];
 	if (format === undefined) {
 		throw badRequest(
@@ -396,11 +436,7 @@ export async function saveImageUpload(
 
 	const config = readCloudinaryConfig();
 	if (config === undefined) {
-		throw badGateway(
-			"Image storage is not configured.",
-			"Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET " +
-				"(or CLOUDINARY_URL)."
-		);
+		throw badGateway("Image storage is not configured.");
 	}
 
 	const buffer = Buffer.from(await file.arrayBuffer());
@@ -409,11 +445,9 @@ export async function saveImageUpload(
 		// The public ID (and, on a dynamic-folder account, the folder parameter)
 		// is built inside the upload, from the configured root and the bucket.
 		return await uploadBuffer(config, buffer, bucket, format);
-	} catch (error) {
-		// The cause is safe to expose to an operator via `details` (Cloudinary
-		// reports the reason and a request id, never the api_secret), and it is the
-		// only way to tell a bad credential from a transient outage.
-		throw badGateway("Image upload failed.", toErrorMessage(error));
+	} catch {
+		// Provider responses may contain diagnostics; keep the public error fixed.
+		throw badGateway("Image upload failed.");
 	}
 }
 
@@ -430,6 +464,7 @@ export async function saveImageUploads(
 	files: readonly File[],
 	bucket: UploadBucket
 ): Promise<string[]> {
+	if (files.length > MAX_IMAGE_COUNT || files.reduce((sum, file) => sum + file.size, 0) > MAX_TOTAL_IMAGE_BYTES) throw badRequest("Too many images or total upload size exceeded.");
 	const urls: string[] = [];
 	for (const file of files) {
 		urls.push(await saveImageUpload(file, bucket));
@@ -455,11 +490,12 @@ export async function resolveImageEntries(
 	bucket: UploadBucket
 ): Promise<string[]> {
 	const urls: string[] = [];
+	if (formData.getAll(field).length > MAX_IMAGE_COUNT) throw badRequest("Too many images.");
 	for (const entry of formData.getAll(field)) {
 		if (typeof entry === "string") {
 			const trimmed = entry.trim();
 			if (trimmed.length > 0) {
-				urls.push(trimmed);
+				urls.push(validateImageSource(trimmed));
 			}
 			continue;
 		}

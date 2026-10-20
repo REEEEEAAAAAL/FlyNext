@@ -87,7 +87,7 @@ import {
 	readBooking,
 	soldSeats,
 	setStatus,
-	writeBooking,
+	claimSeatsAndWrite,
 	type BookingRecord,
 } from "./ledger";
 import type {
@@ -1473,15 +1473,7 @@ function buildDay(dateIso: string): AfsFlight[] {
 	return flights.map((flight) => store.flights.get(flight.id) ?? flight);
 }
 
-/**
- * The cached timetable for `dateIso`, building it on first use.
- *
- * Availability is refreshed from what this process knows, not from the ledger:
- * asking the database about every flight in a day would put several thousand
- * containment tests behind every search, and the answer barely moves. What the
- * count is used for is deciding what to show; what decides whether a seat can
- * actually be sold is {@link reserveSeats}, which does ask.
- */
+/** Refresh cached timetables from the shared durable seat ledger. */
 async function dayFlights(dateIso: string): Promise<AfsFlight[]> {
 	const store = getStore();
 	let flights = store.days.get(dateIso);
@@ -1491,36 +1483,9 @@ async function dayFlights(dateIso: string): Promise<AfsFlight[]> {
 		store.dayOrder.push(dateIso);
 		evictDays(store);
 	}
-	applyHeldSeats(store, flights);
+	const sold = await soldSeats(flights.map(flight => flight.id));
+	for (const flight of flights) flight.availableSeats = Math.max(0, publishedSeats(store, flight) - (sold.get(flight.id) ?? 0));
 	return flights;
-}
-
-/**
- * Show each flight's published count minus the seats taken by the live bookings
- * this process knows about.
- *
- * The count is derived, not maintained. `store.bookings` is every booking this
- * worker has made or read back from the ledger, each carrying its own status, so
- * counting the legs of the ones that are still `CONFIRMED` — and recounting after
- * every transition — cannot drift the way a running total does. A cancellation
- * performed here, a compensation that released a ticket, a booking read back
- * already cancelled: all three are the same reduction over the same map, and
- * there is nothing to unwind when one of them happens.
- *
- * It is a view, not the truth. A seat sold by a different worker since this one
- * last looked is not in it, and the page may therefore show a flight as available
- * that is full: the booking call refuses it with "No available seats on flight …",
- * which is the acceptable direction for that staleness to fail in. The reverse —
- * discounting seats nothing has claimed — would refuse bookings that are fine.
- */
-function applyHeldSeats(store: AfsStore, flights: readonly AfsFlight[]): void {
-	const held = heldInProcess(store);
-	for (const flight of flights) {
-		flight.availableSeats = Math.max(
-			0,
-			publishedSeats(store, flight) - (held.get(flight.id) ?? 0)
-		);
-	}
 }
 
 /* -------------------------------------------------------------------------- */
@@ -1570,50 +1535,10 @@ async function reserveSeats(record: BookingRecord): Promise<AfsFlight[]> {
 		}
 	}
 
-	/*
-	 * The ledger's count is the truth; this process's own view can only add to
-	 * it. A seat sold by another worker is in the ledger and not in `store`, and a
-	 * cancelled booking can still be sitting in `store` as live because the
-	 * cancellation happened elsewhere — so the two are compared per flight and the
-	 * larger is what has to be assumed taken.
-	 */
-	const sold = await soldSeats(legs.map((leg) => leg.id));
-	const mine = heldInProcess(store);
+	const remaining = await claimSeatsAndWrite(record, new Map(legs.map(leg => [leg.id, publishedSeats(store, leg)])));
+	for (const leg of legs) leg.availableSeats = remaining.get(leg.id)!;
 
-	const live = new Map<string, number>();
-	for (const leg of legs) {
-		const taken = Math.max(sold.get(leg.id) ?? 0, mine.get(leg.id) ?? 0);
-		const available = publishedSeats(store, leg) - taken;
-		if (available < 1) {
-			throw badRequest(`No available seats on flight ${leg.id}`);
-		}
-		live.set(leg.id, available);
-	}
-
-	for (const leg of legs) {
-		leg.availableSeats = (live.get(leg.id) ?? 1) - 1;
-	}
 	return legs;
-}
-
-/**
- * Seats taken by the live bookings this process knows about, by flight id.
- *
- * The same reduction {@link applyHeldSeats} renders with, exposed separately so
- * that a booking — which has to decide whether a seat can be sold — does not have
- * to walk a timetable to get it.
- */
-function heldInProcess(store: AfsStore): Map<string, number> {
-	const held = new Map<string, number>();
-	for (const booking of store.bookings.values()) {
-		if (booking.status === "CANCELLED") {
-			continue;
-		}
-		for (const flightId of booking.flightIds) {
-			held.set(flightId, (held.get(flightId) ?? 0) + 1);
-		}
-	}
-	return held;
 }
 
 /**
@@ -1629,27 +1554,13 @@ function publishedSeats(store: AfsStore, flight: AfsFlight): number {
 	return store.capacity.get(flight.id) ?? flight.availableSeats;
 }
 
-/**
- * Give back the seats `flights` were holding.
- *
- * The count is recomputed, not incremented. By the time this runs the booking
- * has already been marked `CANCELLED`, so the reduction over `store.bookings`
- * that {@link applyHeldSeats} renders with excludes its legs — and re-rendering
- * the affected flights is the same statement of the rule that wrote them. Incrementing instead would add a seat to whatever number the object
- * happened to carry, which is not necessarily the one this booking took: a flight
- * whose availability was refreshed from another worker's sale would gain a seat
- * for a booking it never had.
- *
- * The flights are the ones the booking names, resolved rather than looked up, so
- * a flight this process never published cannot be silently skipped — and a
- * cancellation still succeeds, because giving a seat back is not something the
- * caller can be asked to retry.
- */
-function releaseSeats(store: AfsStore, flights: readonly AfsFlight[]): void {
+/** Refresh seat counts after durable cancellation. */
+async function releaseSeats(store: AfsStore, flights: readonly AfsFlight[]): Promise<void> {
 	if (flights.length === 0) {
 		return;
 	}
-	applyHeldSeats(store, flights);
+	const sold = await soldSeats(flights.map(flight => flight.id));
+	for (const flight of flights) flight.availableSeats = Math.max(0, publishedSeats(store, flight) - (sold.get(flight.id) ?? 0));
 }
 
 /** The AFS booking payload for a stored booking, with its legs resolved. */
@@ -1756,6 +1667,7 @@ async function lookupBooking(store: AfsStore, id: string): Promise<ResolvedBooki
 		}
 	} catch (error) {
 		reportLedgerFailure(store, "read", error);
+		if (isDurable()) throw badGateway("Flight booking ledger is temporarily unavailable");
 	}
 
 	if (local !== undefined) {
@@ -1929,7 +1841,16 @@ export async function searchFlights(
 		);
 	}
 
-	const day = await dayFlights(date);
+	const searchDays = new Map<string, Promise<AfsFlight[]>>();
+	const readSearchDay = (day: string): Promise<AfsFlight[]> => {
+		let flights = searchDays.get(day);
+		if (!flights) {
+			flights = dayFlights(day);
+			searchDays.set(day, flights);
+		}
+		return flights;
+	};
+	const day = await readSearchDay(date);
 	const destinationCodes = new Set(destinations.map((airport) => airport.code));
 
 	const direct: AfsFlightGroup[] = [];
@@ -1973,7 +1894,7 @@ export async function searchFlights(
 		dateIso: string
 	): Promise<AfsFlight | undefined> => {
 		const nextDay = new Date(`${dateIso}T00:00:00.000Z`).getTime() + 86_400_000;
-		const tomorrow = await dayFlights(isoDay(new Date(nextDay)));
+		const tomorrow = await readSearchDay(isoDay(new Date(nextDay)));
 		let earliest: AfsFlight | undefined;
 		let earliestDeparture = Number.POSITIVE_INFINITY;
 		for (const leg of tomorrow) {
@@ -2119,7 +2040,8 @@ function toGroup(flights: AfsFlight[]): AfsFlightGroup {
  * usually a different process from the one that answered the search.
  */
 export async function createBooking(
-	bookingData: AfsCreateBookingRequest
+	bookingData: AfsCreateBookingRequest,
+	operationId?: string
 ): Promise<AfsBooking> {
 	const store = getStore();
 	const { email, firstName, lastName, passportNumber } = bookingData;
@@ -2138,7 +2060,7 @@ export async function createBooking(
 	if (passportNumber.trim().length < 9) {
 		throw badRequest("Passport number must be 9 digits long");
 	}
-	if (flightIds.length === 0) {
+	if (flightIds.length === 0 || new Set(flightIds).size !== flightIds.length) {
 		throw badRequest("Missing or invalid flight IDs");
 	}
 
@@ -2171,7 +2093,7 @@ export async function createBooking(
 		}
 	}
 
-	const id = bookingId();
+	const id = operationId ?? bookingId();
 	if (store.bookings.get(id)?.durable === true) {
 		/*
 		 * Unreachable with a real uuid, and never acceptable: overwriting the map
@@ -2196,28 +2118,14 @@ export async function createBooking(
 		firstName: firstName.trim(),
 		lastName: lastName.trim(),
 		email: email.trim(),
-		passportNumber: passportNumber.trim(),
+		passportNumber: `DEMO-${id}`,
 		status: "CONFIRMED",
 		flightIds: legs.map((leg) => leg.id),
 		createdAt: new Date(),
 	};
-	const claimed = await reserveSeats(record);
+	await reserveSeats(record);
 
-	const durable = await writeBooking(record);
-	if (!durable && isDurable()) {
-		/*
-		 * The ledger is configured but would not take the booking. Answering
-		 * "confirmed" would hand back a ticket that no other instance can verify or
-		 * cancel — the exact failure this replaced — so the seats are given back and
-		 * the caller is told the booking failed. `isDurable()` is what distinguishes
-		 * this from a deployment with no database at all, where memory is the
-		 * documented behaviour rather than a fault.
-		 */
-		releaseSeats(store, claimed);
-		throw badGateway(
-			"Booking failed: the booking could not be recorded, please retry"
-		);
-	}
+	const durable = true;
 
 	const booking: StoredBooking = { ...record, durable };
 	store.bookings.set(id, booking);
@@ -2251,6 +2159,16 @@ export async function retrieveBooking(
 	};
 }
 
+// Recover an issued demo ticket without claiming seats a second time.
+export async function recoverBooking(id: string): Promise<AfsBooking | null> {
+	const record = await readBooking(id);
+	if (!record || record.status !== "CONFIRMED") return null;
+	const stored: StoredBooking = { ...record, durable: true };
+	const legs = await legsOf(stored);
+	if (legs.length !== record.flightIds.length || legs.length === 0) return null;
+	return toBooking(stored, legs);
+}
+
 /**
  * `POST /api/bookings/cancel` — release the seats and mark the booking cancelled.
  *
@@ -2272,22 +2190,19 @@ export async function cancelBooking(
 	}
 
 	if (booking.status !== "CANCELLED") {
-		booking.status = "CANCELLED";
+		if (source !== "ledger" && !booking.durable) throw badGateway("Historical flight booking has no durable ledger; reconciliation is required");
 
-		/*
-		 * The durable status is what makes the release happen once. It is written
-		 * first: if it fails, this process still releases its own seats, and the
-		 * booking stays cancellable so another attempt can finish the job. The
-		 * reverse order would leave seats sold against a booking nothing can cancel.
-		 */
-		if (source === "ledger") {
+		// Persist the cancellation before changing cached status or releasing seats.
+
+		if (source === "ledger" || booking.durable) {
 			const stored = await setStatus(booking.id, "CANCELLED");
 			if (!stored) {
-				reportLedgerFailure(store, "cancel", new Error("status not persisted"));
+				throw badGateway("Flight cancellation could not be persisted; retry cancellation");
 			}
 		}
+		booking.status = "CANCELLED";
 		if (booking.flightIds.length > 0) {
-			releaseSeats(store, await legsOf(booking));
+			await releaseSeats(store, await legsOf(booking));
 		}
 	}
 

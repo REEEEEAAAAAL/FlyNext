@@ -1,3 +1,4 @@
+import { enforceRateLimit } from "@/lib/api/rate-limit";
 /**
  * `PUT /api/notifications/[notificationId]/read` — mark one notification read.
  *
@@ -23,6 +24,7 @@ import { prisma } from "@/lib/prisma";
 export const PUT = withRoute<{ notificationId: string }>(
 	async (request, context) => {
 		const { userId } = requireAuth(request);
+		await enforceRateLimit(request, "bookingWrite");
 		const { notificationId: rawNotificationId } = await context.params;
 		const notificationId = parseRouteId(rawNotificationId, "notificationId");
 

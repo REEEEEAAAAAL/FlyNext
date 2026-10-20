@@ -17,6 +17,7 @@ import { GET as getUnreadCount } from "@/app/api/notifications/unread-count/rout
 import { GET as getProfile } from "@/app/api/user/route";
 import { RATE_LIMITS } from "@/lib/api/rate-limit";
 import { setRateLimitRules, resetRateLimits } from "@/lib/api/rate-limit";
+import { consumeRateLimit } from "@/lib/api/rate-limit";
 import { disconnect, resetDatabase } from "#support/db";
 import { createUser } from "#support/factories";
 import { callRoute, readJson, tokenFor } from "#support/requests";
@@ -36,10 +37,12 @@ beforeEach(async () => {
   // about budgets; this suite turns it back on for its own duration.
   delete process.env.RATE_LIMIT_DISABLED;
   resetRateLimits();
+  delete process.env.FLYNEXT_RATE_LIMIT_STORE;
   setRateLimitRules(TEST_RULES);
 });
 
 afterEach(() => {
+  delete process.env.FLYNEXT_RATE_LIMIT_STORE;
   process.env.RATE_LIMIT_DISABLED = "1";
   setRateLimitRules(originalRules);
   resetRateLimits();
@@ -50,6 +53,24 @@ afterAll(async () => {
 });
 
 describe("per-client budgets", () => {
+  it("B02 isolates budgets and windows by rule", async () => {
+    setRateLimitRules({ publicRead: { windowMs: 100_000, max: 1 }, checkout: { windowMs: 60_000, max: 1 } });
+    await consumeRateLimit("same-client", "publicRead");
+    await expect(consumeRateLimit("same-client", "publicRead")).rejects.toThrow("Too many requests");
+    await expect(consumeRateLimit("same-client", "checkout")).resolves.toBeUndefined();
+  });
+
+  it("shares atomic write budgets across workers independently of memory counters", async () => {
+    process.env.FLYNEXT_RATE_LIMIT_STORE = "database";
+    setRateLimitRules({ checkout: { windowMs: 60_000, max: 2 }, login: { windowMs: 60_000, max: 2 } });
+    const attempts = await Promise.allSettled(Array.from({ length: 5 }, () => consumeRateLimit("shared-test-client", "checkout")));
+    expect(attempts.filter(row => row.status === "fulfilled")).toHaveLength(2);
+    resetRateLimits();
+    await expect(consumeRateLimit("shared-test-client", "checkout")).rejects.toThrow("Too many requests");
+    await expect(consumeRateLimit("shared-test-client", "login")).resolves.toBeUndefined();
+    await expect(consumeRateLimit("different-client", "checkout")).resolves.toBeUndefined();
+    delete process.env.FLYNEXT_RATE_LIMIT_STORE;
+  });
   it("answers 429 with a Retry-After once the budget is spent", async () => {
     const client = "203.0.113.10";
     // A distinct account per attempt, so this measures the address budget; the

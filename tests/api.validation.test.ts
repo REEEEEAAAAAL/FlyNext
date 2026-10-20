@@ -360,13 +360,15 @@ describe("identifier fields", () => {
     const user = await createUser();
     const itinerary = await createItineraryRow({ userId: user.id });
 
+    const hotel = await createHotel({});
+    const room = await createRoomType({ hotelId: hotel.id });
+    await createHotelReservation({ userId: user.id, hotelId: hotel.id, roomTypeId: room.id, checkIn: tomorrow(), checkOut: addDays(tomorrow(), 1), itineraryId: itinerary.id });
     const response = await callRoute(checkout, {
       method: "POST",
       token: tokenFor(user.id),
       json: {
         itineraryId: itinerary.id,
-        cardNumber: "4242424242424242",
-        cardExpiry: "12/30",
+        paymentMethod: "DEMO",
       },
     });
 
@@ -436,146 +438,23 @@ describe("route segments", () => {
   });
 });
 
-describe("checkout payloads", () => {
-  async function arrangeItinerary() {
+describe("demo checkout payloads", () => {
+  it("rejects card and identity fields without changing the draft", async () => {
     const user = await createUser();
     const itinerary = await createItineraryRow({ userId: user.id });
-    return { user, itinerary };
-  }
-
-  it("rejects a card number that is too short", async () => {
-    const { user, itinerary } = await arrangeItinerary();
-
-    const response = await callRoute(checkout, {
-      method: "POST",
-      token: tokenFor(user.id),
-      json: {
-        itineraryId: String(itinerary.id),
-        cardNumber: "4242",
-        cardExpiry: "12/30",
-      },
-    });
-
-    expect(response.status).toBe(400);
-    const body = await readJson<{ error: string }>(response);
-    expect(body.error).toMatch(/invalid card number/i);
-  });
-
-  it("rejects a numeric card number instead of crashing on it", async () => {
-    const { user, itinerary } = await arrangeItinerary();
-
-    // A JSON number has no `.length`, so the type check has to come first:
-    // reading `.length` on a number throws a `TypeError`, which the endpoint
-    // reports as a `500`.
-    const response = await callRoute(checkout, {
-      method: "POST",
-      token: tokenFor(user.id),
-      json: {
-        itineraryId: String(itinerary.id),
-        cardNumber: 4242424242424242,
-        cardExpiry: "12/30",
-      },
-    });
-
-    expect(response.status).toBe(400);
-  });
-
-  it("rejects a card number containing letters", async () => {
-    const { user, itinerary } = await arrangeItinerary();
-
-    const response = await callRoute(checkout, {
-      method: "POST",
-      token: tokenFor(user.id),
-      json: {
-        itineraryId: String(itinerary.id),
-        cardNumber: "4242abcd42424242",
-        cardExpiry: "12/30",
-      },
-    });
-
-    expect(response.status).toBe(400);
-  });
-
-  it("rejects a malformed expiry", async () => {
-    const { user, itinerary } = await arrangeItinerary();
-
-    for (const cardExpiry of ["2030-12", "13/30", "12", "12/2030/1"]) {
-      const response = await callRoute(checkout, {
-        method: "POST",
-        token: tokenFor(user.id),
-        json: {
-          itineraryId: String(itinerary.id),
-          cardNumber: "4242424242424242",
-          cardExpiry,
-        },
-      });
-      expect(response.status, `cardExpiry=${cardExpiry}`).toBe(400);
+    for (const extra of [{ cardNumber: "4242424242424242" }, { cardExpiry: "12/30" }, { passportNumber: "P123456789" }]) {
+      const response = await callRoute(checkout, { method: "POST", token: tokenFor(user.id), json: { itineraryId: itinerary.id, paymentMethod: "DEMO", ...extra } });
+      expect(response.status).toBe(400);
     }
-
-    const stored = await prisma.itinerary.findUniqueOrThrow({
-      where: { id: itinerary.id },
-      select: { status: true },
-    });
-    expect(stored.status).toBe("DRAFT");
+    expect((await prisma.itinerary.findUniqueOrThrow({ where: { id: itinerary.id } })).status).toBe("DRAFT");
   });
-
-  it("stores only the last four digits", async () => {
-    const { user, itinerary } = await arrangeItinerary();
-
-    const response = await callRoute(checkout, {
-      method: "POST",
-      token: tokenFor(user.id),
-      json: {
-        itineraryId: String(itinerary.id),
-        cardNumber: "4242 4242 4242 1234",
-        cardExpiry: "12/30",
-      },
-    });
-
-    expect(response.status).toBe(200);
-    const stored = await prisma.itinerary.findUniqueOrThrow({
-      where: { id: itinerary.id },
-      select: { cardNumber: true },
-    });
-    expect(stored.cardNumber).toBe("1234");
-  });
-
-  it("refuses to check out an itinerary that was cancelled", async () => {
-    const { user, itinerary } = await arrangeItinerary();
-    await prisma.itinerary.update({
-      where: { id: itinerary.id },
-      data: { status: "CANCELLED" },
-    });
-
-    const response = await callRoute(checkout, {
-      method: "POST",
-      token: tokenFor(user.id),
-      json: {
-        itineraryId: String(itinerary.id),
-        cardNumber: "4242424242424242",
-        cardExpiry: "12/30",
-      },
-    });
-
-    // Reviving a cancelled itinerary would leave it `CONFIRMED` with no bookings.
-    expect(response.status).toBe(409);
-  });
-
-  it("reports a foreign itinerary as not found rather than forbidden", async () => {
-    const { itinerary } = await arrangeItinerary();
+  it("refuses cancelled and foreign itineraries", async () => {
+    const user = await createUser();
+    const itinerary = await createItineraryRow({ userId: user.id, status: "CANCELLED" });
     const stranger = await createUser();
-
-    const response = await callRoute(checkout, {
-      method: "POST",
-      token: tokenFor(stranger.id),
-      json: {
-        itineraryId: String(itinerary.id),
-        cardNumber: "4242424242424242",
-        cardExpiry: "12/30",
-      },
-    });
-
-    expect(response.status).toBe(404);
+    const body = { itineraryId: itinerary.id, paymentMethod: "DEMO" };
+    expect((await callRoute(checkout, { method: "POST", token: tokenFor(user.id), json: body })).status).toBe(409);
+    expect((await callRoute(checkout, { method: "POST", token: tokenFor(stranger.id), json: body })).status).toBe(404);
   });
 });
 

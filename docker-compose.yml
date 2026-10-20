@@ -1,10 +1,8 @@
-version: '3.8'
-
 services:
   nextjs:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: dockerfile
     ports:
       - "3000:3000"
     environment:
@@ -22,6 +20,11 @@ services:
       # running would then be indistinguishable from one that is misbehaving.
       - AFS_BASE_URL=${AFS_BASE_URL:-}
       - AFS_MOCK=${AFS_MOCK:-}
+      - CLOUDINARY_CLOUD_NAME=${CLOUDINARY_CLOUD_NAME:-}
+      - CLOUDINARY_API_KEY=${CLOUDINARY_API_KEY:-}
+      - CLOUDINARY_API_SECRET=${CLOUDINARY_API_SECRET:-}
+      - CLOUDINARY_URL=${CLOUDINARY_URL:-}
+      - CLOUDINARY_FOLDER=${CLOUDINARY_FOLDER:-flynext}
     volumes:
       - uploads-volume:/app/public/uploads
     depends_on:

@@ -1,10 +1,16 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { loginUrl } from "@/app/lib/return-path";
+
+import EmptyState from "@/app/components/EmptyState";
+
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clearAccessToken } from "@/app/lib/session";
-import { formatLegDate, hotelReference, stayNights } from "@/app/lib/booking-display";
+import { formatStayDate, formatLegDate, hotelReference, stayNights } from "@/app/lib/booking-display";
 import { useFeedback } from "@/app/context/FeedbackContext";
 
 interface HotelBooking {
@@ -24,7 +30,7 @@ export default function UserHotelBookingsPage() {
     const router = useRouter();
     const { error: showError } = useFeedback();
     const [bookings, setBookings] = useState<HotelBooking[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
     /**
@@ -35,13 +41,13 @@ export default function UserHotelBookingsPage() {
      * means an expired session starts the refresh flow immediately instead of
      * leaving the traveller on a page whose only content is "Unauthorized".
      */
-    const refreshToken = async () => {
-        const token = localStorage.getItem("accessToken");
+    const refreshToken = useCallback(async () => {
+        const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
-        const response = await fetch("/api/user", {
+        const response = await sessionFetch("/api/user", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -55,12 +61,12 @@ export default function UserHotelBookingsPage() {
             router.push("/auth/refresh");
             return;
         }
-    };
+    }, [router]);
 
     useEffect(() => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
         refreshToken();
@@ -75,7 +81,7 @@ export default function UserHotelBookingsPage() {
                  * page that must not be offered cancelled reservations, and it
                  * omits the flag.
                  */
-                const res = await fetch(
+                const res = await sessionFetch(
                     "/api/user/hotel-bookings?includeCancelled=1",
                     {
                         method: "GET",
@@ -121,17 +127,17 @@ export default function UserHotelBookingsPage() {
         };
 
         fetchHotelBookings();
-    }, [router, showError]);
+    }, [router, refreshToken, showError]);
 
     return (
-        <div className="card max-w-6xl mx-auto p-8 text-black dark:text-zinc-100">
+        <div className="card page-shell text-black dark:text-zinc-100">
             <h1 className="text-3xl font-bold mb-6 heading">
                 Your Hotel Bookings
             </h1>
             {loading && (
                 <p className="muted">Loading hotel bookings...</p>
             )}
-            {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+            {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
             {bookings.length > 0 ? (
                 <div className="space-y-4">
                     {bookings.map((booking) => {
@@ -142,7 +148,7 @@ export default function UserHotelBookingsPage() {
                                 key={booking.id}
                                 className="p-6 border border-gray-300 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                             >
-                                <div className="flex justify-between items-start">
+                                <div className="booking-card-header flex flex-wrap gap-4 justify-between items-start">
                                     <div>
                                         <h2 className="text-xl font-semibold mb-2">
                                             Booking #{booking.reference}
@@ -211,7 +217,7 @@ export default function UserHotelBookingsPage() {
                                             Check-In
                                         </h3>
                                         <p className="text-gray-700 dark:text-zinc-200">
-                                            {formatLegDate(booking.checkIn)}
+                                            {formatStayDate(booking.checkIn)}
                                         </p>
                                     </div>
                                     <div className="p-3 bg-green-50 dark:bg-emerald-500/10 rounded">
@@ -219,7 +225,7 @@ export default function UserHotelBookingsPage() {
                                             Check-Out
                                         </h3>
                                         <p className="text-gray-700 dark:text-zinc-200">
-                                            {formatLegDate(booking.checkOut)}
+                                            {formatStayDate(booking.checkOut)}
                                         </p>
                                     </div>
                                 </div>
@@ -235,7 +241,7 @@ export default function UserHotelBookingsPage() {
                  * loaded at all.
                  */
                 !loading && !error && (
-                    <p className="muted">No hotel bookings found.</p>
+                    <EmptyState title="Find somewhere to settle in" description="Your hotel reservations will appear here, with stay dates and cancellation options." href="/hotels" action="Find a stay" />
                 )
             )}
         </div>

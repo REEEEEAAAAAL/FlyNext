@@ -1,5 +1,11 @@
 "use client";
 
+import HostNavigation from "@/app/components/HostNavigation";
+
+import { loginUrl } from "@/app/lib/return-path";
+
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { clearAccessToken } from "@/app/lib/session";
@@ -35,14 +41,14 @@ export default function CreateHotelPage() {
   // Protect the page: if no access token is found, redirect to login.
   useEffect(() => {
     const fetchData = async () => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             // Redirect to login if no token found.
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
 
-        const response = await fetch("/api/user", {
+        const response = await sessionFetch("/api/user", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -119,14 +125,14 @@ export default function CreateHotelPage() {
     const pending = info("Creating your hotel…", { duration: 0 });
 
     try {
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
       if (!token) {
           // Redirect to login if no token found.
-          router.push("/auth/login");
+          router.push(loginUrl());
           return;
       }
 
-      const response = await fetch("/api/user", {
+      const response = await sessionFetch("/api/user", {
           headers: {
               Authorization: `Bearer ${token}`,
           },
@@ -158,7 +164,7 @@ export default function CreateHotelPage() {
         data.append("images", item.file);
       });
 
-      const res = await fetch("/api/hotels", {
+      const res = await sessionFetch("/api/hotels", {
         method: "POST",
         headers: {
           Authorization: token ? `Bearer ${token}` : "",
@@ -192,7 +198,8 @@ export default function CreateHotelPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-8 card text-black dark:text-zinc-100">
+    <div className="page-shell page-shell--form card text-black dark:text-zinc-100">
+      <HostNavigation />
       <h1 className="text-3xl font-bold mb-6 heading text-center">
         Add a New Hotel
       </h1>
@@ -213,7 +220,6 @@ export default function CreateHotelPage() {
                * the file the user just picked, and those are not addressable from
                * the image optimizer, so `next/image` would render an empty box.
                */
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={logoPreview}
                 alt="Hotel Logo Preview"
@@ -275,8 +281,8 @@ export default function CreateHotelPage() {
 
         {/* Hotel Name */}
         <div>
-          <label className="label mb-1">Hotel Name:</label>
-          <input
+          <label htmlFor="field-1" className="label mb-1">Hotel Name:</label>
+          <input id="field-1"
             type="text"
             name="name"
             value={formData.name}
@@ -289,8 +295,8 @@ export default function CreateHotelPage() {
 
         {/* Address */}
         <div>
-          <label className="label mb-1">Address:</label>
-          <input
+          <label htmlFor="field-2" className="label mb-1">Address:</label>
+          <input id="field-2"
             type="text"
             name="address"
             value={formData.address}
@@ -303,10 +309,10 @@ export default function CreateHotelPage() {
 
         {/* Location */}
         <div>
-          <label className="label mb-1">
+          <label htmlFor="field-3" className="label mb-1">
             Location (City, Country):
           </label>
-          <input
+          <input id="field-3"
             type="text"
             name="location"
             value={formData.location}
@@ -319,8 +325,8 @@ export default function CreateHotelPage() {
 
         {/* Star Rating */}
         <div>
-          <label className="label mb-1">Star Rating:</label>
-          <input
+          <label htmlFor="field-4" className="label mb-1">Star Rating:</label>
+          <input id="field-4"
             type="number"
             name="starRating"
             value={formData.starRating}

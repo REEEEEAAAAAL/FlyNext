@@ -71,7 +71,7 @@ async function requireHotelOwner(userId: number): Promise<number> {
 
 export const GET = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "publicRead");
+	await enforceRateLimit(request, "publicRead");
 
 	await requireHotelOwner(userId);
 

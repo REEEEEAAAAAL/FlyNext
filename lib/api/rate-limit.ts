@@ -1,38 +1,10 @@
-/**
- * In-process request rate limiting.
- *
- * The API is served by a single Next.js process and has no Redis, no gateway and
- * no other shared infrastructure, so the budget for a client is tracked in this
- * module's memory. That is a deliberate trade-off:
- *
- * - it is exact for one process and degrades gracefully if the app is ever scaled
- *   out (each instance enforces its own share of the budget rather than none);
- * - it adds no dependency and no network hop to a request path that includes a
- *   endpoint polled every five seconds;
- * - it resets on deploy, which is harmless because every rule is a burst limit,
- *   not a quota.
- *
- * What it protects against is the traffic pattern the API actually sees: a login
- * form being brute-forced, a badly behaved tab polling in a tight loop, and a
- * client replaying a booking or checkout write. None of those needs cluster-wide
- * accounting to be stopped.
- *
- * ## Algorithm
- *
- * A fixed window per key. The window is a bucket of time, not a sliding log: the
- * counter simply resets when the bucket ends. Compared with a token bucket it is
- * a few lines instead of a timer per key, and compared with a sliding log it is
- * `O(1)` memory per key instead of `O(limit)` — worth having when the key is an
- * IP address chosen by an attacker.
- *
- * The known weakness of fixed windows is that a caller can fit two windows' worth
- * of requests around a boundary. For abuse and overload control that burst is
- * acceptable, and the alternative costs a sorted timestamp list per key.
- */
+/** Auth/write budgets use atomic PostgreSQL counters in deployments. Public
+ * reads use bounded process memory. All keys include the rule name. */
 
 import type { NextRequest } from "next/server";
 import { getAuthContext } from "./auth";
 import { jsonError } from "./response";
+import { createHash } from "node:crypto";
 
 /** A rate limiting rule. */
 export interface RateLimitRule {
@@ -156,12 +128,31 @@ export function rateLimitKey(request: Request): string {
  *
  * @throws RateLimitExceededError when the budget for the current window is gone.
  */
-export function consumeRateLimit(key: string, name: RateLimitName): void {
-	if (process.env[DISABLE_FLAG] === "1") {
+export async function consumeRateLimit(identity: string, name: RateLimitName): Promise<void> {
+	const deployed = process.env.NODE_ENV === "production" || !!process.env.VERCEL || !!process.env.VERCEL_ENV;
+	if (!deployed && process.env[DISABLE_FLAG] === "1") {
 		return;
 	}
 	const rule = rules[name];
 	if (rule === undefined) {
+		return;
+	}
+	const key = `${name}:${identity}`;
+	const sharedRules: RateLimitName[] = ["login", "register", "refresh", "profileWrite", "bookingWrite", "checkout"];
+	if ((deployed || process.env.FLYNEXT_RATE_LIMIT_STORE === "database") && sharedRules.includes(name)) {
+		const { prisma } = await import("../prisma");
+		const hash = createHash("sha256").update(key).digest("hex");
+		// Database clock and one atomic upsert coordinate all application workers.
+		const rows = await prisma.$queryRaw<Array<{ count: number; remaining: number }>>`
+			INSERT INTO "RateLimitCounter" ("key", "count", "expiresAt")
+			VALUES (${hash}, 1, clock_timestamp() + ${rule.windowMs} * interval '1 millisecond')
+			ON CONFLICT ("key") DO UPDATE SET
+			 "count" = CASE WHEN "RateLimitCounter"."expiresAt" <= clock_timestamp() THEN 1 ELSE "RateLimitCounter"."count" + 1 END,
+			 "expiresAt" = CASE WHEN "RateLimitCounter"."expiresAt" <= clock_timestamp() THEN clock_timestamp() + ${rule.windowMs} * interval '1 millisecond' ELSE "RateLimitCounter"."expiresAt" END
+			RETURNING "count", GREATEST(1, CEIL(EXTRACT(EPOCH FROM ("expiresAt" - clock_timestamp()))))::int AS remaining`;
+		if (rows[0].count > rule.max) throw new RateLimitExceededError(rows[0].remaining);
+		// Expired keys contain no useful state. Bounded batches avoid a long cleanup lock.
+		if (Math.random() < 0.01) await prisma.$executeRaw`DELETE FROM "RateLimitCounter" WHERE "key" IN (SELECT "key" FROM "RateLimitCounter" WHERE "expiresAt" < clock_timestamp() LIMIT 1000)`;
 		return;
 	}
 
@@ -189,11 +180,13 @@ export function consumeRateLimit(key: string, name: RateLimitName): void {
  *
  * @throws RateLimitExceededError when the budget is exhausted.
  */
-export function enforceRateLimit(
+export async function enforceRateLimit(
 	request: NextRequest,
 	name: RateLimitName
-): void {
-	consumeRateLimit(rateLimitKey(request), name);
+): Promise<void> {
+	// Credential operations must not let a caller change buckets with a bearer token.
+	const identity = ["login", "register", "refresh"].includes(name) ? `ip:${getClientIp(request)}` : rateLimitKey(request);
+	await consumeRateLimit(identity, name);
 }
 
 /**

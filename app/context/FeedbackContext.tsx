@@ -526,18 +526,40 @@ function ConfirmDialog({
 }) {
 	const danger = (options.tone ?? "danger") === "danger";
 	const cancelRef = useRef<HTMLButtonElement>(null);
-
-	useEffect(() => {
-		cancelRef.current?.focus();
-		const onKeyDown = (event: KeyboardEvent) => {
-			if (event.key === "Escape") {
-				event.preventDefault();
-				onCancel();
-			}
-		};
-		window.addEventListener("keydown", onKeyDown);
-		return () => window.removeEventListener("keydown", onKeyDown);
-	}, [onCancel]);
+    const panelRef = useRef<HTMLDivElement>(null);
+    const cancelAction = useRef(onCancel);
+    cancelAction.current = onCancel;
+    useEffect(() => {
+        const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+        const previousOverflow = document.body.style.overflow;
+        const background = Array.from(document.querySelectorAll<HTMLElement>(".site-header, .app-main, .site-footer"));
+        const inertState = background.map((element) => element.inert);
+        background.forEach((element) => { element.inert = true; });
+        document.body.style.overflow = "hidden";
+        cancelRef.current?.focus();
+        const focusable = () => Array.from(panelRef.current?.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]') ?? []);
+        const containFocus = (event: FocusEvent) => {
+            if (!panelRef.current?.contains(event.target as Node)) cancelRef.current?.focus();
+        };
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") { event.preventDefault(); cancelAction.current(); }
+            if (event.key === "Tab") {
+                const elements = focusable();
+                const first = elements[0]; const last = elements[elements.length - 1];
+                if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+                if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+            }
+        };
+        document.addEventListener("keydown", onKeyDown);
+        document.addEventListener("focusin", containFocus);
+        return () => {
+            document.removeEventListener("keydown", onKeyDown);
+            document.removeEventListener("focusin", containFocus);
+            background.forEach((element, index) => { element.inert = inertState[index]; });
+            document.body.style.overflow = previousOverflow;
+            if (previous?.isConnected) previous.focus();
+        };
+    }, []);
 
 	return (
 		<div
@@ -554,9 +576,11 @@ function ConfirmDialog({
 			}}
 		>
 			<div
-				role="dialog"
+				ref={panelRef}
+                role="dialog"
 				aria-modal="true"
 				aria-labelledby="confirm-dialog-title"
+                aria-describedby={options.description ? "confirm-dialog-description" : undefined}
 				className="w-full max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl animate-panel-in dark:border-white/10 dark:bg-zinc-800"
 			>
 				<div className="flex items-start gap-4 p-6">
@@ -584,7 +608,7 @@ function ConfirmDialog({
 							{options.title}
 						</h2>
 						{options.description !== undefined && (
-							<div className="mt-2 text-sm muted">{options.description}</div>
+							<div id="confirm-dialog-description" className="mt-2 text-sm muted">{options.description}</div>
 						)}
 						{options.points !== undefined && options.points.length > 0 && (
 							<ul className="mt-3 space-y-1.5">

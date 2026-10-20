@@ -3,6 +3,8 @@ import NavigationBar from "./components/NavigationBar";
 import { FeedbackProvider } from "./context/FeedbackContext";
 import { ThemeProvider } from "./context/ThemeContext";
 import { Analytics } from "@vercel/analytics/next";
+import { SessionProvider } from "./context/SessionProvider";
+import Link from "next/link";
 
 export const metadata = {
   title: "FlyNext",
@@ -60,8 +62,11 @@ export default function RootLayout({
           */}
         <ThemeProvider>
           <FeedbackProvider>
+            <a href="#main-content" className="skip-link">Skip to content</a>
             <NavigationBar />
-            {children}
+            {/* Resolve lazy route content inside a client component during hydration replay. */}
+            <main id="main-content" className="app-main" tabIndex={-1}><SessionProvider>{children}</SessionProvider></main>
+            <footer className="site-footer"><Link href="/">FlyNext</Link><span>A portfolio travel demo. No real payments.</span><Link href="/hotels/owner">Host workspace</Link></footer>
           </FeedbackProvider>
         </ThemeProvider>
         <Analytics />

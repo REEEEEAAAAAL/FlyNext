@@ -34,7 +34,7 @@
  */
 
 import axios, { type AxiosInstance, type AxiosResponse } from "axios";
-import { badGateway, toErrorMessage } from "./api/errors";
+import { badGateway } from "./api/errors";
 import {
 	DOCKER_AFS_BASE_URL,
 	LOCAL_AFS_BASE_URL,
@@ -131,29 +131,11 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 /** Best-effort extraction of a human readable message from an upstream error. */
-function upstreamMessage(data: unknown): string {
-	if (isRecord(data) && typeof data.message === "string") {
-		return data.message;
-	}
-	return "no message";
-}
-
-/**
- * Translate any failure into an `ApiError` carrying `502`.
- *
- * @param action human readable prefix, e.g. `"Flight search failed"`.
- */
+/** Keep provider diagnostics out of public error messages. */
 function upstreamFailure(action: string, error: unknown): never {
-	if (axios.isAxiosError(error)) {
-		const status = error.response?.status;
-		const detail =
-			status === undefined ? "no response" : `upstream status ${status}`;
-		throw badGateway(
-			`${action}: ${upstreamMessage(error.response?.data)}`,
-			detail
-		);
-	}
-	throw badGateway(`${action}: ${toErrorMessage(error)}`);
+    // Log only a status/code, never the Axios request/config (which holds credentials).
+    console.error("[afs] provider request failed", axios.isAxiosError(error) ? error.response?.status ?? error.code : "provider-error");
+    throw badGateway(action);
 }
 
 /** Assert that a validated response body is a JSON array. */
@@ -281,11 +263,12 @@ export async function searchFlights(
 
 /** Create a flight booking. */
 export async function createBooking(
-	bookingData: AfsCreateBookingRequest
+	bookingData: AfsCreateBookingRequest,
+	operationId?: string
 ): Promise<AfsBooking> {
 	const client = remoteClient();
 	if (client === undefined) {
-		return offline.createBooking(bookingData);
+		return offline.createBooking(bookingData, operationId);
 	}
 	const action = "Booking failed";
 	try {
@@ -302,6 +285,7 @@ export async function createBooking(
 		}
 		return {
 			bookingReference: record.bookingReference,
+			...(typeof record.id === "string" ? { id: record.id } : {}),
 			status: typeof record.status === "string" ? record.status : "CONFIRMED",
 			flights: record.flights as AfsFlight[],
 			...(typeof record.ticketNumber === "string"

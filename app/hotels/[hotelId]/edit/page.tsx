@@ -1,5 +1,11 @@
 "use client";
 
+import HostNavigation from "@/app/components/HostNavigation";
+
+import { loginUrl } from "@/app/lib/return-path";
+
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect, FormEvent } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -36,13 +42,13 @@ export default function EditHotelPage() {
   // Protect the page.
   useEffect(() => {
     const fetchData = async () => {
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
       if (!token) {
-        router.push("/auth/login");
+        router.push(loginUrl());
         return;
       }
 
-      const response = await fetch("/api/user", {
+      const response = await sessionFetch("/api/user", {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -81,7 +87,7 @@ export default function EditHotelPage() {
   // State for room types.
   const [roomTypes, setRoomTypes] = useState<RoomType[]>([]);
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
@@ -95,8 +101,8 @@ export default function EditHotelPage() {
       setLoading(true);
       setError("");
       try {
-        const token = localStorage.getItem("accessToken");
-        const res = await fetch(`/api/hotels/${hotelId}`, {
+        const token = getAccessToken();
+        const res = await sessionFetch(`/api/hotels/${hotelId}`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -188,13 +194,13 @@ export default function EditHotelPage() {
     setSubmitting(true);
 
     try {
-      const token = localStorage.getItem("accessToken");
+      const token = getAccessToken();
       if (!token) {
-        router.push("/auth/login");
+        router.push(loginUrl());
         return;
       }
 
-      const response = await fetch("/api/user", {
+      const response = await sessionFetch("/api/user", {
         headers: { Authorization: `Bearer ${token}` },
       });
 
@@ -225,7 +231,7 @@ export default function EditHotelPage() {
         }
       });
 
-      const res = await fetch(`/api/hotels/${hotelId}`, {
+      const res = await sessionFetch(`/api/hotels/${hotelId}`, {
         method: "PUT",
         headers: { Authorization: token ? `Bearer ${token}` : "" },
         body: data,
@@ -288,8 +294,8 @@ export default function EditHotelPage() {
 
     const pending = info("Deleting the hotel…", { duration: 0 });
     try {
-      const token = localStorage.getItem("accessToken");
-      const res = await fetch(`/api/hotels/${hotelId}`, {
+      const token = getAccessToken();
+      const res = await sessionFetch(`/api/hotels/${hotelId}`, {
         method: "DELETE",
         headers: { Authorization: token ? `Bearer ${token}` : "" },
       });
@@ -314,30 +320,10 @@ export default function EditHotelPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-8 card text-black dark:text-zinc-100 relative">
-      {/* Delete Button */}
-      <button
-        type="button"
-        onClick={handleDeleteHotel}
-        className="absolute top-4 right-4 bg-red-600 text-white rounded-full p-1 hover:bg-red-700 dark:hover:bg-red-500"
-        title="Delete Hotel"
-      >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          className="h-6 w-6"
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-4h4a1 1 0 011 1v2H9V4a1 1 0 011-1z"
-          />
-        </svg>
-      </button>
+    <div className="page-shell page-shell--form card text-black dark:text-zinc-100 relative">
 
+
+            <HostNavigation hotelHref={`/hotels/${hotelId}/edit`} />
       <h1 className="text-3xl font-bold mb-6 heading">Edit Hotel</h1>
       {loading ? (
         <p className="text-gray-600 dark:text-zinc-400">Loading hotel details...</p>
@@ -353,7 +339,6 @@ export default function EditHotelPage() {
                  * render nothing until the file had been uploaded and served from
                  * `/uploads`.
                  */
-                // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={logoPreview}
                   alt="Logo Preview"
@@ -361,7 +346,7 @@ export default function EditHotelPage() {
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-zinc-500">
-                  <svg
+                  <svg aria-hidden="true"
                     xmlns="http://www.w3.org/2000/svg"
                     className="h-12 w-12"
                     fill="none"
@@ -415,8 +400,8 @@ export default function EditHotelPage() {
 
           {/* Hotel Name */}
           <div>
-            <label className="label mb-1">Hotel Name:</label>
-            <input
+            <label htmlFor="field-1" className="label mb-1">Hotel Name:</label>
+            <input id="field-1"
               type="text"
               name="name"
               value={formData.name}
@@ -429,8 +414,8 @@ export default function EditHotelPage() {
 
           {/* Address */}
           <div>
-            <label className="label mb-1">Address:</label>
-            <input
+            <label htmlFor="field-2" className="label mb-1">Address:</label>
+            <input id="field-2"
               type="text"
               name="address"
               value={formData.address}
@@ -443,10 +428,10 @@ export default function EditHotelPage() {
 
           {/* Location */}
           <div>
-            <label className="label mb-1">
+            <label htmlFor="field-3" className="label mb-1">
               Location (City, Country):
             </label>
-            <input
+            <input id="field-3"
               type="text"
               name="location"
               value={formData.location}
@@ -459,8 +444,8 @@ export default function EditHotelPage() {
 
           {/* Star Rating */}
           <div>
-            <label className="label mb-1">Star Rating:</label>
-            <input
+            <label htmlFor="field-4" className="label mb-1">Star Rating:</label>
+            <input id="field-4"
               type="number"
               name="starRating"
               value={formData.starRating}
@@ -552,11 +537,11 @@ export default function EditHotelPage() {
           </button>
         </form>
       )}
-      {error && <p className="mt-4 text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p role="alert" className="mt-4 text-red-600 dark:text-red-400">{error}</p>}
 
       {/* Room Types Section */}
       <div className="mt-8">
-        <div className="flex justify-between items-center mb-4">
+        <div className="flex flex-wrap gap-4 justify-between items-center mb-4">
           <h2 className="text-2xl font-bold heading">Room Types</h2>
           <Link
             href={`/hotels/${hotelId}/room-types/new`}
@@ -577,7 +562,7 @@ export default function EditHotelPage() {
                   <p>Name: {roomType.name}</p>
                   <p>Amenities: {roomType.amenities}</p>
                   <p>Price Per Night: ${roomType.pricePerNight}</p>
-                  <p>Availability: {roomType.currentAvailability}</p>
+                  <p>Configured capacity: {roomType.currentAvailability}</p>
                 </div>
               </Link>
             ))}
@@ -587,6 +572,27 @@ export default function EditHotelPage() {
         )}
       </div>
 
+<section className="danger-zone mt-8 p-5 border border-red-200 dark:border-red-900 rounded-xl"><h2 className="font-semibold heading">Delete hotel</h2><p className="text-sm muted my-3">Permanently remove this hotel and its availability. Review the confirmation before continuing.</p><button
+        type="button"
+        onClick={handleDeleteHotel}
+        className="button-secondary text-red-700 dark:text-red-300"
+        title="Delete Hotel"
+      >
+        <svg aria-hidden="true"
+          xmlns="http://www.w3.org/2000/svg"
+          className="h-6 w-6"
+          fill="none"
+          viewBox="0 0 24 24"
+          stroke="currentColor"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-4h4a1 1 0 011 1v2H9V4a1 1 0 011-1z"
+          />
+        </svg><span>Delete hotel</span>
+      </button></section>
       {/* Back Button */}
       <div className="mt-6 text-center">
         <button

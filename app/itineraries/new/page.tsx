@@ -1,5 +1,13 @@
 "use client";
 
+import { loginUrl } from "@/app/lib/return-path";
+
+import BookingSteps from "@/app/components/BookingSteps";
+import Link from "next/link";
+
+import { bookingRequest } from "@/app/lib/booking-request";
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import type { FlightBookingListItem, HotelBookingListItem } from "@/types";
@@ -9,6 +17,7 @@ import {
 	hotelReference,
 	hasLegValue,
 	stayNights,
+	formatStayDate,
 } from "@/app/lib/booking-display";
 import { useFeedback } from "@/app/context/FeedbackContext";
 
@@ -24,7 +33,7 @@ function formatDay(value: Date | string | null | undefined): string {
   if (value === null || value === undefined) return "N/A";
   if (typeof value === "string" && value.trim().length === 0) return "N/A";
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "N/A" : parsed.toLocaleDateString();
+  return Number.isNaN(parsed.getTime()) ? "N/A" : parsed.toLocaleDateString("en-US");
 }
 
 /**
@@ -66,7 +75,7 @@ function hotelLabel(booking: HotelBookingListItem): string {
   const duration = nights === null ? "" : ` (${nights} ${nights === 1 ? "night" : "nights"})`;
   return (
     `#${hotelReference(booking.id)} — ${booking.hotel.name}${room}, ` +
-    `${formatDay(booking.period?.checkIn)} → ${formatDay(booking.period?.checkOut)}` +
+    `${formatStayDate(booking.period?.checkIn)} → ${formatStayDate(booking.period?.checkOut)}` +
     `${duration} — $${booking.totalPrice.toFixed(2)}`
   );
 }
@@ -92,106 +101,24 @@ function isSelectable(
   return booking.status !== "CANCELLED" && !booking.itineraryId;
 }
 
-/**
- * How the creation POST is allowed to behave, and why those numbers.
- *
- * `RETRY_DELAY_MS` is a pause, not an exponential backoff: one retry is being
- * spent, and the failure it is covering for is a slow or cold database, which
- * wants a moment rather than a longer wait. `RETRYABLE_STATUS` starts at 500, so
- * every `4xx` — an expired session (401), somebody else's reservation (403), an
- * already-linked one (409), a rate limit (429) — is answered immediately: those
- * are decisions, not jitter, and a retry would spend a second of the caller's
- * write budget to receive the same answer.
- */
-const RETRY_DELAY_MS = 400;
-const RETRYABLE_STATUS = 500;
-const MAX_ATTEMPTS = 2;
-
-/** A completed round trip: the parsed body, or the failure to show. */
+/** Repeated submissions retain their original request key. */
 interface Submission {
   payload: { message?: string; reservations: { id: number }; error?: string } | null;
   failure: string;
-  /**
-   * The HTTP status that ended the attempt, or `null` when no response arrived.
-   *
-   * The caller needs the `401` specifically: an expired session is a recoverable
-   * condition this page already handles on load, whereas a `500` and a dropped
-   * connection are not.
-   */
   status: number | null;
 }
-
-/** Pause between attempts. */
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-/**
- * Submit the creation request, retrying once when the attempt could not have
- * changed anything server side.
- *
- * `POST /api/itineraries` runs one interactive transaction, and every way it can
- * fail underneath a retry — a `P2028` timeout, a lost connection, a 5xx — rolls
- * that transaction back. The worst a retry can therefore do is create the
- * itinerary that the first attempt failed to create, which is exactly what the
- * caller asked for and what a refresh would otherwise have to do by hand.
- *
- * Two responses are not retried:
- *
- * - anything below 500, because the endpoint answered a question about state
- *   (not found, forbidden, already linked) and the answer is stable;
- * - a 401, which is handled by the caller so the page can start the token refresh
- *   flow instead of presenting a login problem as a server problem.
- */
-async function submitItinerary(
-  token: string,
-  body: Record<string, number | null>
-): Promise<Submission> {
-  let failure = "Itinerary creation failed.";
-
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
-    let response: Response | null = null;
-    try {
-      response = await fetch("/api/itineraries", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(body),
-      });
-
-      const payload = await response.json().catch(() => null);
-      if (response.ok && payload !== null) {
-        return { payload, failure, status: response.status };
-      }
-      // The route's envelope always carries a sentence; fall back to a generic one
-      // when even that is unreadable, which is what a proxy error page looks like.
-      if (response.status < RETRYABLE_STATUS) {
-        return {
-          payload: null,
-          failure: payload?.error || failure,
-          status: response.status,
-        };
-      }
-      failure = payload?.error || "The server did not complete the request.";
-    } catch (error: any) {
-      // No response at all: the request never reached the route, or the
-      // connection dropped while it was waiting.
-      failure = error?.message || "Network error. Please check your connection.";
-    }
-
-    if (attempt < MAX_ATTEMPTS) {
-      await wait(RETRY_DELAY_MS);
-    }
+async function submitItinerary(token: string, body: Record<string, number | null>): Promise<Submission> {
+  try {
+    const response = await bookingRequest("/api/itineraries", {
+      method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+    });
+    const payload = await response.json().catch(() => null);
+    if (response.ok && payload) return { payload, failure: "", status: response.status };
+    return { payload: null, status: response.status, failure: response.status >= 500 ? "The result is unknown. Retry with the same selections or check My Itineraries." : payload?.error || "The result is unknown. Check My Itineraries before submitting again." };
+  } catch {
+    return { payload: null, status: null, failure: "The result is unknown. Check My Itineraries before submitting again." };
   }
-
-  /*
-   * Out of attempts. The request either never arrived or was rolled back, so the
-   * message says the work was not done and that trying again is worthwhile —
-   * "Itinerary creation failed." alone reads like a permanent rejection.
-   */
-  return { payload: null, failure: `${failure} Please try again.`, status: null };
 }
 
 export default function CreateItineraryPage() {
@@ -207,9 +134,9 @@ export default function CreateItineraryPage() {
 
   // Fetch unlinked flight and hotel bookings for the logged-in user.
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
+    const token = getAccessToken();
     if (!token) {
-      router.push("/auth/login");
+      router.push(loginUrl());
       return;
     }
     const fetchBookings = async () => {
@@ -217,7 +144,7 @@ export default function CreateItineraryPage() {
       setError("");
       try {
         // Fetch flight bookings
-        const resFlight = await fetch("/api/user/flight-bookings", {
+        const resFlight = await sessionFetch("/api/user/flight-bookings", {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
@@ -253,7 +180,7 @@ export default function CreateItineraryPage() {
         );
 
         // Fetch hotel bookings
-        const resHotel = await fetch("/api/user/hotel-bookings", {
+        const resHotel = await sessionFetch("/api/user/hotel-bookings", {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
@@ -298,9 +225,9 @@ export default function CreateItineraryPage() {
     if (submitting) {
       return;
     }
-    const token = localStorage.getItem("accessToken");
+    const token = getAccessToken();
     if (!token) {
-      router.push("/auth/login");
+      router.push(loginUrl());
       return;
     }
 
@@ -346,10 +273,12 @@ export default function CreateItineraryPage() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto p-8 card text-[var(--text)]">
-      <h1 className="text-3xl font-bold mb-6 heading">Create Itinerary</h1>
-      {loading && <p className="muted">Loading bookings...</p>}
-      {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+    <div className="page-shell page-shell--form card text-[var(--text)]">
+      <BookingSteps current="plan" />
+      <h1 className="text-3xl font-bold mb-6 heading">Bring your trip together</h1>
+      <p className="search-intro">Choose one flight reservation, one hotel reservation, or both. You can review the total before confirming with DEMO payment.</p>
+      {loading && <p role="status" className="muted">Loading bookings...</p>}
+      {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
       
       <div className="mb-4">
         <h2 className="text-xl font-semibold heading">
@@ -380,7 +309,7 @@ export default function CreateItineraryPage() {
           </select>
         ) : (
           !loading && (
-            <p className="muted">No unlinked flight bookings available.</p>
+            <p className="muted">No unlinked flight bookings available. <Link className="text-blue-600 dark:text-blue-300 underline" href="/flights">Find a flight</Link></p>
           )
         )}
       </div>
@@ -406,7 +335,7 @@ export default function CreateItineraryPage() {
           </select>
         ) : (
           !loading && (
-            <p className="muted">No unlinked hotel bookings available.</p>
+            <p className="muted">No unlinked hotel bookings available. <Link className="text-blue-600 dark:text-blue-300 underline" href="/hotels">Find a stay</Link></p>
           )
         )}
       </div>
@@ -418,7 +347,7 @@ export default function CreateItineraryPage() {
          * that still invites a click there is how one selection becomes two
          * itineraries.
          */
-        disabled={submitting}
+        disabled={loading || submitting || (selectedFlightId === "" && selectedHotelId === "")}
         className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-500"
       >
         {submitting ? "Creating..." : "Create Itinerary"}

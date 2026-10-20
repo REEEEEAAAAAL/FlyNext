@@ -1,5 +1,13 @@
 "use client";
 
+import { loginUrl } from "@/app/lib/return-path";
+
+import EmptyState from "@/app/components/EmptyState";
+
+import { formatStayDate } from "@/app/lib/booking-display";
+
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
@@ -66,18 +74,18 @@ interface Itinerary {
 export default function ItineraryListPage() {
     const router = useRouter();
     const [itineraries, setItineraries] = useState<Itinerary[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
     useEffect(() => {
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
 
         const fetchData = async () => {
-            const response = await fetch("/api/user", {
+            const response = await sessionFetch("/api/user", {
                 headers: {
                     Authorization: `Bearer ${token}`,
                 },
@@ -94,7 +102,7 @@ export default function ItineraryListPage() {
             setLoading(true);
             setError("");
             try {
-                const res = await fetch("/api/itineraries", {
+                const res = await sessionFetch("/api/itineraries", {
                     method: "GET",
                     headers: {
                         "Content-Type": "application/json",
@@ -123,7 +131,7 @@ export default function ItineraryListPage() {
     const formatDate = (dateString: string) => {
         if (!dateString) return "N/A";
         const date = new Date(dateString);
-        return date.toLocaleDateString();
+        return date.toLocaleDateString("en-US");
     };
 
     /*
@@ -145,12 +153,13 @@ export default function ItineraryListPage() {
     };
 
     return (
-        <div className="max-w-6xl mx-auto p-8 card text-black dark:text-zinc-100">
+        <div className="page-shell card text-black dark:text-zinc-100">
             <h1 className="text-3xl font-bold mb-6 heading">
-                Your Itineraries
+                Your trips, in one place
             </h1>
-            {loading && <p className="muted">Loading itineraries...</p>}
-            {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+            <div className="flex flex-wrap items-center justify-between gap-4 mb-6"><p className="muted text-sm">Review reservations, confirm your demo booking, or manage a change of plans.</p>{itineraries.length > 0 && <Link className="button-primary" href="/itineraries/new">Build an itinerary</Link>}</div>
+            {loading && <p role="status" className="muted">Loading itineraries...</p>}
+            {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
             {itineraries.length > 0 ? (
                 <div className="space-y-4">
                     {itineraries.map((itinerary, index) => (
@@ -158,7 +167,7 @@ export default function ItineraryListPage() {
                             key={itinerary.id}
                             className="p-6 border border-gray-300 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                         >
-                            <div className="flex justify-between items-start">
+                            <div className="booking-card-header flex flex-wrap gap-4 justify-between items-start">
                                 <div>
                                     <h2 className="text-xl font-semibold mb-2">
                                         Itinerary #{itinerary.id}
@@ -294,17 +303,13 @@ export default function ItineraryListPage() {
                                             <span className="font-medium">
                                                 Check-in:
                                             </span>{" "}
-                                            {formatDate(
-                                                itinerary.hotel.checkIn
-                                            )}
+                                            {formatStayDate(itinerary.hotel.checkIn)}
                                         </p>
                                         <p className="text-gray-700 dark:text-zinc-200">
                                             <span className="font-medium">
                                                 Check-out:
                                             </span>{" "}
-                                            {formatDate(
-                                                itinerary.hotel.checkOut
-                                            )}
+                                            {formatStayDate(itinerary.hotel.checkOut)}
                                         </p>
                                     </div>
                                 )}
@@ -313,8 +318,8 @@ export default function ItineraryListPage() {
                     ))}
                 </div>
             ) : (
-                !loading && (
-                    <p className="muted">No itineraries found.</p>
+                !loading && !error && (
+                    <EmptyState title="Your next trip starts here" description="Reserve a flight or stay, then bring your bookings together in one itinerary." href="/itineraries/new" action="Build an itinerary" />
                 )
             )}
         </div>

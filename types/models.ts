@@ -40,6 +40,10 @@ export interface RoomTypeSummary {
 	images: JsonValue;
 	currentAvailability: number;
 	hotelId: number;
+	availableRooms?: number | null;
+	nights?: number | null;
+	stayTotal?: number | null;
+	currency?: "USD";
 }
 
 /** A hotel plus its room types — `GET /api/hotels`, `GET /api/hotels/[hotelId]`. */
@@ -57,7 +61,7 @@ export interface HotelWithRoomTypes {
 
 /** A single date's availability row, charted by the room-type edit page. */
 export interface AvailabilityRecordDto {
-	id: number;
+	id?: number;
 	date: Date;
 	availability: number;
 	roomTypeId: number;
@@ -95,6 +99,19 @@ export type FlightSegmentJson = {
 	to: string | null;
 	departDate: string | null;
 	arriveDate: string | null;
+	flightNumber?: string | null;
+	airlineCode?: string | null;
+	airlineName?: string | null;
+	originName?: string | null;
+	originCity?: string | null;
+	originCountry?: string | null;
+	destinationName?: string | null;
+	destinationCity?: string | null;
+	destinationCountry?: string | null;
+	durationMinutes?: number | null;
+	status?: string | null;
+	price?: number | null;
+	currency?: string | null;
 };
 
 /**

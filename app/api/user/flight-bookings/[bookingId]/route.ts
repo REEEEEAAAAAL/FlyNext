@@ -25,13 +25,13 @@ import { jsonMessage, jsonOk } from "@/lib/api/response";
 import { parseRouteId } from "@/lib/api/validation";
 import { verifyFlight } from "@/lib/afs-client";
 import { prisma } from "@/lib/prisma";
-import { cancelFlightReservation, toFlightLegDto } from "@/lib/reservations";
+import { cancelFlightReservation, ticketedLastName, assertAllLegsScheduled, toFlightLegDto } from "@/lib/reservations";
 import type { FlightBookingDetail } from "@/types";
 
 /** Columns returned by the detail endpoint. */
 const BOOKING_SELECT = {
 	id: true,
-	afsBookingId: true,
+	afsBookingId: true, passengerLastName: true,
 	departure: true,
 	arrival: true,
 	price: true,
@@ -69,40 +69,21 @@ export const GET = withRoute<{ bookingId: string }>(async (request, context) => 
 
 export const POST = withRoute<{ bookingId: string }>(async (request, context) => {
 	const { userId } = requireAuth(request);
+	await enforceRateLimit(request, "bookingWrite");
 	const { bookingId: rawBookingId } = await context.params;
 	const bookingId = parseRouteId(rawBookingId, "bookingId");
 
 	const booking = await loadBooking(bookingId, userId);
 
-	const user = await prisma.user.findUnique({
-		where: { id: userId },
-		select: { lastName: true },
-	});
-	if (user === null) {
-		throw notFound("User not found");
-	}
-
-	const verification = await verifyFlight(booking.afsBookingId, user.lastName);
-	const legs = verification.flights;
-	const firstLegStatus = legs[0]?.status;
-	const secondLegStatus = legs[1]?.status;
-
-	if (
-		verification.status === "CONFIRMED" &&
-		firstLegStatus === "SCHEDULED" &&
-		(legs.length < 2 || secondLegStatus === "SCHEDULED")
-	) {
-		return jsonMessage("Flight is on schedule", 200);
-	}
-
-	// The page treats this as a failure and renders the message.
-	throw badGateway(`Flight is ${firstLegStatus ?? verification.status}`);
+	const verification = await verifyFlight(booking.afsBookingId, await ticketedLastName(booking));
+	assertAllLegsScheduled(verification);
+	return jsonMessage("Flight is on schedule", 200);
 });
 
 export const DELETE = withRoute<{ bookingId: string }>(
 	async (request, context) => {
 		const { userId } = requireAuth(request);
-		enforceRateLimit(request, "bookingWrite");
+		await enforceRateLimit(request, "bookingWrite");
 		const { bookingId: rawBookingId } = await context.params;
 		const bookingId = parseRouteId(rawBookingId, "bookingId");
 
@@ -123,15 +104,7 @@ export const DELETE = withRoute<{ bookingId: string }>(
 			}
 		}
 
-		const user = await prisma.user.findUnique({
-			where: { id: userId },
-			select: { lastName: true },
-		});
-		if (user === null) {
-			throw notFound("User not found");
-		}
-
-		await cancelFlightReservation(booking.id, user.lastName);
+		await cancelFlightReservation(booking.id);
 
 		return jsonMessage("Flight booking cancelled successfully", 200);
 	}

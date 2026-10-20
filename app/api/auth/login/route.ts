@@ -17,7 +17,6 @@
  * and cannot be assumed to be a number of days.
  */
 
-import * as cookie from "cookie";
 import { badRequest, unauthorized } from "@/lib/api/errors";
 import { withRoute } from "@/lib/api/handler";
 import { consumeRateLimit, enforceRateLimit } from "@/lib/api/rate-limit";
@@ -26,16 +25,15 @@ import { parseJsonBody, readString } from "@/lib/api/validation";
 import {
 	comparePassword,
 	generateAccessToken,
-	generateRefreshToken,
-	getRefreshTokenMaxAgeSeconds,
 } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { LoginResponse } from "@/types";
+import { createRefreshSession, refreshCookie } from "@/lib/refresh-sessions";
 
 export const POST = withRoute(async (request) => {
 	// Cheap rejection first: a brute-force run should not reach the database at
 	// all once its address has spent the budget.
-	enforceRateLimit(request, "login");
+	await enforceRateLimit(request, "login");
 
 	const body = await parseJsonBody(request);
 
@@ -50,7 +48,7 @@ export const POST = withRoute(async (request) => {
 
 	// A second budget scoped to the account, not the connection: spreading guesses
 	// for one address across many source addresses would otherwise cost nothing.
-	consumeRateLimit(`login:account:${email}`, "login");
+	await consumeRateLimit(`login:account:${email}`, "login");
 
 	/*
 	 * Look the account up case-insensitively, but try the exact match first:
@@ -73,19 +71,14 @@ export const POST = withRoute(async (request) => {
 	}
 
 	const accessToken = generateAccessToken({ userId: user.id });
-	const refreshToken = generateRefreshToken({ userId: user.id });
-
-	const cookieHeader = cookie.serialize("refreshToken", refreshToken, {
-		httpOnly: true,
-		secure: process.env.NODE_ENV === "production",
-		sameSite: "strict",
-		path: "/",
-		maxAge: getRefreshTokenMaxAgeSeconds(),
-	});
+	const refreshToken = await createRefreshSession(user.id);
+	const cookieHeader = refreshCookie(refreshToken);
 
 	const body_out: LoginResponse = {
 		message: "Login successful",
 		accessToken,
 	};
-	return jsonWithSetCookie(body_out, cookieHeader, 200);
+	const response = jsonWithSetCookie(body_out, cookieHeader, 200);
+	response.headers.set("Cache-Control", "no-store");
+	return response;
 });

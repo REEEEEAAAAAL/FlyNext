@@ -1,6 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { loginUrl } from "@/app/lib/return-path";
+
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { clearAccessToken } from "@/app/lib/session";
 import { useFeedback } from "@/app/context/FeedbackContext";
@@ -81,28 +85,28 @@ export default function ProfilePage() {
      * of a long form would otherwise leave the only explanation at the top of
      * the card. One helper, so the two can never disagree about what happened.
      */
-    const report = (type: "success" | "error", text: string) => {
+    const report = useCallback((type: "success" | "error", text: string) => {
         setMessage({ type, text });
         if (type === "success") {
             success("Profile updated", { description: text });
         } else {
             toastError("Profile not updated", { description: text });
         }
-    };
+    }, [success, toastError]);
 
     // Fetch user profile on component mount.
     useEffect(() => {
         const fetchProfile = async () => {
             try {
                 setLoading(true);
-                const token = localStorage.getItem("accessToken");
+                const token = getAccessToken();
                 if (!token) {
                     // Redirect to login if no token found.
-                    router.push("/auth/login");
+                    router.push(loginUrl());
                     return;
                 }
 
-                const response = await fetch("/api/user", {
+                const response = await sessionFetch("/api/user", {
                     headers: {
                         Authorization: `Bearer ${token}`,
                     },
@@ -152,7 +156,7 @@ export default function ProfilePage() {
         };
 
         fetchProfile();
-    }, [router]);
+    }, [router, report]);
 
   const handleImageError = () => {
       setPreviewImage("/user-profile-default.svg");
@@ -182,9 +186,9 @@ export default function ProfilePage() {
         setMessage({ type: "", text: "" });
 
         try {
-            const token = localStorage.getItem("accessToken");
+            const token = getAccessToken();
             if (!token) {
-                router.push("/auth/login");
+                router.push(loginUrl());
                 return;
             }
 
@@ -206,7 +210,7 @@ export default function ProfilePage() {
                 formDataToSend.append("profilePic", profileData.profilePicFile);
             }
 
-            const response = await fetch("/api/user", {
+            const response = await sessionFetch("/api/user", {
                 method: "PUT",
                 headers: {
                     Authorization: `Bearer ${token}`,
@@ -275,8 +279,8 @@ export default function ProfilePage() {
     }
 
     return (
-        <div className="min-h-screen bg-[var(--background)] py-12 px-4 sm:px-6 lg:px-8 text-[var(--text)]">
-            <div className="max-w-md mx-auto card rounded-xl overflow-hidden md:max-w-2xl">
+        <div className="min-h-screen bg-[var(--background)] py-12 text-[var(--text)]">
+            <div className="page-shell page-shell--form profile-card card rounded-xl overflow-hidden">
                 <div className="md:flex">
                     <div className="p-8 w-full">
                         <div className="flex justify-between items-center mb-6">

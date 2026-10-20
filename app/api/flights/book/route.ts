@@ -41,13 +41,15 @@ import { enforceRateLimit } from "@/lib/api/rate-limit";
 import { jsonCreated } from "@/lib/api/response";
 import { parseJsonBody } from "@/lib/api/validation";
 import { createFlightReservation } from "@/lib/reservations";
+import { idempotentExternal } from "@/lib/api/idempotency";
+import { isAfsOffline } from "@/lib/afs-client";
+import { recoverBooking } from "@/lib/afs/offline";
 
 /** Body fields the client always sends, in the order used by the error message. */
 const REQUIRED_FIELDS = [
 	"email",
 	"firstName",
 	"lastName",
-	"passportNumber",
 	"flightIds",
 ] as const;
 
@@ -121,7 +123,7 @@ function readReturnLegCount(value: unknown, total: number): number | undefined {
 
 export const POST = withRoute(async (request) => {
 	const { userId } = requireAuth(request);
-	enforceRateLimit(request, "bookingWrite");
+	await enforceRateLimit(request, "bookingWrite");
 
 	const body = await parseJsonBody(request);
 
@@ -141,7 +143,7 @@ export const POST = withRoute(async (request) => {
 	const email = String(body.email).trim();
 	const firstName = String(body.firstName).trim();
 	const lastName = String(body.lastName).trim();
-	const passportNumber = String(body.passportNumber).trim();
+	const passportNumber = "DEMO-PASSENGER";
 	const flightIds = readFlightIds(body.flightIds);
 	const returnLegCount = readReturnLegCount(
 		body[RETURN_LEG_COUNT_FIELD],
@@ -160,15 +162,25 @@ export const POST = withRoute(async (request) => {
 		}
 	}
 
-	const { booking, reservationId } = await createFlightReservation(
-		{ email, firstName, lastName, passportNumber, flightIds },
-		userId,
-		{ returnLegCount }
-	);
+	return idempotentExternal(request, userId, "flight-book", { email, firstName, lastName, flightIds, returnLegCount: returnLegCount ?? null }, async operationId => {
+		const { booking, reservationId } = await createFlightReservation(
+			{ email, firstName, lastName, passportNumber, flightIds },
+			userId,
+			{ returnLegCount, operationId }
+		);
 
-	return jsonCreated({
-		message: "Flight booking completed successfully",
-		...booking,
-		reservationId,
-	});
+		return { status: 201, body: {
+			message: "Flight booking completed successfully",
+			...booking,
+			reservationId,
+		} };
+	}, isAfsOffline() ? async operationId => {
+		const issued = await recoverBooking(operationId);
+		if (!issued) return null;
+		const { booking, reservationId } = await createFlightReservation(
+			{ email, firstName, lastName, passportNumber, flightIds }, userId,
+			{ operationId, returnLegCount, recoverOnly: true, createBooking: async () => issued }
+		);
+		return { status: 201, body: { message: "Flight booking completed successfully", ...booking, reservationId } };
+	} : undefined);
 });

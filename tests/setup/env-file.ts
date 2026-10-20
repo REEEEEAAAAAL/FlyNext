@@ -16,7 +16,7 @@
 import { readFileSync } from "node:fs";
 
 /** Read and apply a `.env`-format file. */
-export function loadEnvFile(path: string): Record<string, string> {
+export function parseEnvFile(path: string): Record<string, string> {
   const contents = readFileSync(path, "utf8");
   const parsed: Record<string, string> = {};
 
@@ -41,8 +41,13 @@ export function loadEnvFile(path: string): Record<string, string> {
     }
 
     parsed[key] = value;
-    process.env[key] = value;
   }
 
+  return parsed;
+}
+
+export function loadEnvFile(path: string): Record<string, string> {
+  const parsed = parseEnvFile(path);
+  Object.assign(process.env, parsed);
   return parsed;
 }

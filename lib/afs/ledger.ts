@@ -1,43 +1,7 @@
-/**
- * Durable state for the in-process AFS provider.
- *
- * `lib/afs/offline.ts` is a substitute for a separate service, and a real service
- * keeps its bookings somewhere every instance can read. This process's memory is
- * not that place: on a serverless host a search and the booking that follows it
- * are usually two invocations, often on two workers, so a booking held only in
- * memory is "Booking not found" for the next request — which is precisely the
- * failure this table removes.
- *
- * What lives here and what does not is deliberate:
- *
- * - Bookings are durable. They are the only thing a later request has to find
- *   again, so they are written before the provider answers and read back by id
- *   afterwards. `retrieve` and `cancel` then work from any instance, and a
- *   cancellation is idempotent across all of them: the release is driven by the
- *   stored status rather than by a local flag.
- * - Seat inventory is derived, not stored. A flight's live count is its default
- *   minus the bookings that contain it, so two instances cannot each sell the
- *   last seat from their own private counter — and there is no second copy of
- *   the truth to drift.
- *
- * ## Degrading rather than failing
- *
- * Every function here answers `undefined`/`0` when the database is unreachable,
- * and logs once per reason. A provider that answered a search but refused every
- * booking because a ledger write timed out would be worse than one that keeps the
- * pre-existing in-memory behaviour, and the caller cannot tell the difference
- * anyway — {@link isDurable} is what it uses to decide whether a fallback is
- * safe. The failure is reported once, in the log the rest of the API already
- * writes to, instead of on every call.
- *
- * ## Relative imports
- *
- * As in `lib/afs/offline.ts`: `tsconfig.server.json` compiles this tree to `dist/`
- * as plain CommonJS for `node dist/prisma/seed.js`, and an aliased import would
- * emit a `require("@/…")` that Node cannot resolve.
- */
+/** Durable booking records and atomic seat claims for the built-in flight provider. */
 
-import { prisma } from "../prisma";
+import { DEFAULT_TRANSACTION_OPTIONS, prisma } from "../prisma";
+import { badGateway, badRequest } from "../api/errors";
 import { reportEvent } from "../api/events";
 
 /** A booking as the provider stores and returns it. */
@@ -105,7 +69,6 @@ function noteFailure(operation: string, error: unknown): void {
 	reportEvent("afs.ledger.unavailable", {
 		operation,
 		code,
-		detail: error instanceof Error ? error.message : String(error),
 	});
 }
 
@@ -196,7 +159,7 @@ export async function readBooking(id: string): Promise<BookingRecord | undefined
 		return row === null ? undefined : toRecord(row);
 	} catch (error) {
 		noteFailure("read", error);
-		return undefined;
+		throw badGateway("Flight booking ledger is temporarily unavailable");
 	}
 }
 
@@ -227,14 +190,13 @@ export async function soldSeats(
 
 	try {
 		const rows = await prisma.$queryRaw<{ flightId: string; seats: bigint }[]>`
-			SELECT wanted."flightId" AS "flightId",
-			       (
-			         SELECT count(*)
-			         FROM "AfsOfflineBooking" AS booking
-			         WHERE booking."status" = 'CONFIRMED'::"BookingStatus"
-			           AND booking."flightIds" @> to_jsonb(ARRAY[wanted."flightId"])
-			       ) AS "seats"
-			FROM unnest(${wanted}::text[]) AS wanted("flightId")
+			SELECT leg.id AS "flightId", count(*) AS seats
+			FROM "AfsOfflineBooking" AS booking
+			CROSS JOIN LATERAL (
+				SELECT DISTINCT jsonb_array_elements_text(booking."flightIds") AS id
+			) AS leg
+			WHERE booking.status = 'CONFIRMED'::"BookingStatus" AND leg.id = ANY(${wanted}::text[])
+			GROUP BY leg.id
 		`;
 		for (const row of rows) {
 			const seats = Number(row.seats);
@@ -244,6 +206,7 @@ export async function soldSeats(
 		}
 	} catch (error) {
 		noteFailure("sold-seats", error);
+		throw badGateway("Flight inventory is temporarily unavailable");
 	}
 	return sold;
 }
@@ -252,55 +215,45 @@ export async function soldSeats(
 /* Writes                                                                     */
 /* -------------------------------------------------------------------------- */
 
-/**
- * Persist a booking, or report that it could not be.
- *
- * @returns `true` when the row is stored. The caller keeps its in-memory copy
- *   either way; the answer only decides whether it may also promise that a later
- *   request — on any instance — will find this booking.
- */
-export async function writeBooking(record: BookingRecord): Promise<boolean> {
-	try {
-		await prisma.afsOfflineBooking.create({
-			data: {
-				id: record.id,
-				firstName: record.firstName,
-				lastName: record.lastName,
-				email: record.email,
-				passportNumber: record.passportNumber,
-				status: "CONFIRMED",
-				flightIds: record.flightIds,
-			},
-		});
-		return true;
-	} catch (error) {
-		noteFailure("write", error);
-		return false;
-	}
-}
-
 /** The statuses a stored booking can be moved to. */
 export type LedgerStatus = "CONFIRMED" | "CANCELLED";
 
-/**
- * Move a stored booking to `status`.
- *
- * `updateMany` rather than `update`: a cancellation has to be idempotent even
- * against a row that has already gone, and `update` would raise `P2025` for a
- * booking another instance is concurrently cancelling. Matching zero rows is a
- * successful no-op, exactly as a repeated cancellation already is in memory.
- */
+/** Persist cancellation while holding the same ordered flight locks as booking. */
 export async function setStatus(
 	id: string,
 	status: LedgerStatus
 ): Promise<boolean> {
 	try {
-		await prisma.afsOfflineBooking.updateMany({ where: { id }, data: { status } });
-		return true;
+		return await prisma.$transaction(async tx => {
+			const row = await tx.afsOfflineBooking.findUnique({ where: { id } });
+			if (!row) return false;
+			for (const flightId of readFlightIds(row.flightIds).sort()) {
+				await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`flight:${flightId}`}, 0))`;
+			}
+			const changed = await tx.afsOfflineBooking.updateMany({ where: { id }, data: { status } });
+			return changed.count === 1;
+		}, DEFAULT_TRANSACTION_OPTIONS);
 	} catch (error) {
 		noteFailure("set-status", error);
 		return false;
 	}
+}
+
+export async function claimSeatsAndWrite(record: BookingRecord, capacities: ReadonlyMap<string, number>): Promise<Map<string, number>> {
+	if (!configured()) throw badGateway("Flight booking requires a durable ledger");
+	return prisma.$transaction(async tx => {
+		const remaining = new Map<string, number>();
+		for (const id of [...capacities.keys()].sort()) {
+			await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`flight:${id}`}, 0))`;
+		}
+		for (const [id, capacity] of capacities) {
+			const sold = await tx.afsOfflineBooking.count({ where: { status: "CONFIRMED", flightIds: { array_contains: [id] } } });
+			if (sold >= capacity) throw badRequest(`No available seats on flight ${id}`);
+			remaining.set(id, capacity - sold - 1);
+		}
+		await tx.afsOfflineBooking.create({ data: { ...record, status: "CONFIRMED" } });
+		return remaining;
+	}, DEFAULT_TRANSACTION_OPTIONS);
 }
 
 /**

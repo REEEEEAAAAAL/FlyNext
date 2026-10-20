@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { loginUrl } from "@/app/lib/return-path";
+
+import EmptyState from "@/app/components/EmptyState";
+
+import { getAccessToken, sessionFetch } from "@/app/lib/session";
+
+import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clearAccessToken } from "@/app/lib/session";
@@ -102,7 +108,7 @@ export default function UserFlightBookingsPage() {
     const router = useRouter();
     const { error: showError } = useFeedback();
     const [bookings, setBookings] = useState<FlightBooking[]>([]);
-    const [loading, setLoading] = useState(false);
+    const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
 
     /**
@@ -113,13 +119,13 @@ export default function UserFlightBookingsPage() {
      * means an expired session starts the refresh flow immediately instead of
      * leaving the traveller on a page whose only content is "Unauthorized".
      */
-    const refreshToken = async () => {
-        const token = localStorage.getItem("accessToken");
+    const refreshToken = useCallback(async () => {
+        const token = getAccessToken();
         if (!token) {
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
-        const response = await fetch("/api/user", {
+        const response = await sessionFetch("/api/user", {
             headers: {
                 Authorization: `Bearer ${token}`,
             },
@@ -133,14 +139,14 @@ export default function UserFlightBookingsPage() {
             router.push("/auth/refresh");
             return;
         }
-    };
+    }, [router]);
 
     useEffect(() => {
         // Protect the page: if no access token is found, redirect to login.
-        const token = localStorage.getItem("accessToken");
+        const token = getAccessToken();
         if (!token) {
             // Redirect to login if no token found.
-            router.push("/auth/login");
+            router.push(loginUrl());
             return;
         }
 
@@ -159,7 +165,7 @@ export default function UserFlightBookingsPage() {
                  * from the moment it was cancelled. Cancelled stays are listed the
                  * same way.
                  */
-                const res = await fetch(
+                const res = await sessionFetch(
                     "/api/user/flight-bookings?includeCancelled=1",
                     {
                         method: "GET",
@@ -197,17 +203,17 @@ export default function UserFlightBookingsPage() {
         };
 
         fetchBookings();
-    }, [router, showError]);
+    }, [router, refreshToken, showError]);
 
     return (
-        <div className="card max-w-6xl mx-auto p-8 text-black dark:text-zinc-100">
+        <div className="card page-shell text-black dark:text-zinc-100">
             <h1 className="text-3xl font-bold mb-6 heading">
                 Your Flight Bookings
             </h1>
             {loading && (
                 <p className="muted">Loading flight bookings...</p>
             )}
-            {error && <p className="text-red-600 dark:text-red-400">{error}</p>}
+            {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
             {bookings.length > 0 ? (
                 <div className="space-y-4">
                     {bookings.map((booking) => {
@@ -226,7 +232,7 @@ export default function UserFlightBookingsPage() {
                                 key={booking.id}
                                 className="p-6 border border-gray-300 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
                             >
-                                <div className="flex justify-between items-start">
+                                <div className="booking-card-header flex flex-wrap gap-4 justify-between items-start">
                                     <div>
                                         {/*
                                          * The heading is the short, readable booking
@@ -296,7 +302,7 @@ export default function UserFlightBookingsPage() {
                  * loaded at all.
                  */
                 !loading && !error && (
-                    <p className="muted">No flight bookings found.</p>
+                    <EmptyState title="Ready for takeoff?" description="Your flight reservations will appear here. Find a route to start planning." href="/flights" action="Explore flights" />
                 )
             )}
         </div>

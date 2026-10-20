@@ -19,6 +19,7 @@ import { ApiError, toErrorMessage } from "./errors";
 import { RateLimitExceededError, toRateLimitResponse } from "./rate-limit";
 import { jsonError } from "./response";
 import type { RouteContext, RouteParams } from "@/types";
+import { withUploadCleanup } from "./upload";
 
 /** Signature Next.js invokes for an App Router HTTP method. */
 export type RouteHandler<TParams extends RouteParams = RouteParams> = (
@@ -90,7 +91,7 @@ export function withRoute<TParams extends RouteParams = RouteParams>(
 ): RouteHandler<TParams> {
 	return async (request, context) => {
 		try {
-			return await handler(request, context);
+			return await withUploadCleanup(() => handler(request, context));
 		} catch (error) {
 			if (error instanceof ApiError || error instanceof RateLimitExceededError) {
 				// Expected, caller-caused failures stay quiet in the log.

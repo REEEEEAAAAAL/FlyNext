@@ -1,5 +1,9 @@
 "use client";
 
+import { safeReturnPath } from "@/app/lib/return-path";
+
+import { sessionFetch } from "@/app/lib/session";
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useFeedback } from "@/app/context/FeedbackContext";
@@ -70,7 +74,7 @@ export default function RegisterPage() {
 
     try {
       // Send a POST request to the registration API endpoint
-      const res = await fetch("/api/auth/register", {
+      const res = await sessionFetch("/api/auth/register", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -103,7 +107,7 @@ export default function RegisterPage() {
             data?.message || "Sign in with your new email and password.",
         });
         // Navigate to the login page
-        router.push("/auth/login");
+        router.push(`/auth/login?next=${encodeURIComponent(safeReturnPath(new URLSearchParams(window.location.search).get("next")))}`);
       }
     } catch {
       // Handle any unexpected errors during the fetch operation
@@ -117,13 +121,14 @@ export default function RegisterPage() {
 
   // Handle the click event of the "Back to Login" button
   const handleReturnLogin = () => {
-    router.push("/auth/login");
+    router.push(`/auth/login?next=${encodeURIComponent(safeReturnPath(new URLSearchParams(window.location.search).get("next")))}`);
   };
 
   return (
-    <div className="min-h-screen bg-[var(--background)] px-4 py-12">
-      <div className="max-w-md mx-auto p-8 card text-[var(--text)]">
-        <h1 className="text-2xl font-bold mb-6 heading">Register</h1>
+    <div className="auth-page bg-[var(--background)] py-6">
+      <div className="page-shell page-shell--compact card text-[var(--text)]">
+        <h1 className="text-2xl font-bold mb-6 heading">A world of possibility</h1>
+        <p className="search-intro">Create an account to explore the full FlyNext demo.</p>
         <form onSubmit={handleSubmit}>
           {/* Email Input Field */}
           <div className="mb-4">
@@ -154,10 +159,12 @@ export default function RegisterPage() {
               onChange={handleChange}
               required
               minLength={MIN_PASSWORD_LENGTH}
+              aria-describedby="password-guidance"
               autoComplete="new-password"
               className="field"
             />
           </div>
+          <p id="password-guidance" className="text-xs muted mb-4">Use at least 6 characters. For this demo, choose a password you do not use elsewhere.</p>
           {/* First Name Input Field */}
           <div className="mb-4">
             <label htmlFor="register-first-name" className="label mb-1">
@@ -227,7 +234,7 @@ export default function RegisterPage() {
         {/* Back to Login button */}
         <button
           onClick={handleReturnLogin}
-          className="mt-6 w-full py-2 bg-gray-500 text-white rounded hover:bg-gray-600 dark:bg-zinc-700 dark:hover:bg-zinc-600 dark:text-zinc-100"
+          className="mt-6 w-full text-sm underline muted"
         >
           Back to Login
         </button>

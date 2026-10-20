@@ -28,6 +28,27 @@ model User {
   flightReservations FlightReservation[]
   itineraries        Itinerary[]
   notifications      Notification[]
+  refreshSessions    RefreshSession[]
+}
+
+// Only a SHA-256 digest of an opaque, random refresh credential is persisted.
+model RefreshSession {
+  tokenHash String @id
+  familyId String
+  userId Int
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+  @@index([familyId])
+  @@index([userId, expiresAt])
+}
+
+model RateLimitCounter {
+  key String @id
+  count Int
+  expiresAt DateTime
+  @@index([expiresAt])
 }
 
 model Hotel {
@@ -106,6 +127,8 @@ model FlightReservation {
   price        Float
   status       BookingStatus @default(CONFIRMED)
   createdAt    DateTime      @default(now())
+  passengerLastName String?
+  cancellationPending Boolean @default(false)
 
   @@index([userId, createdAt])
 }
@@ -121,6 +144,23 @@ model Itinerary {
   cardNumber  String // Last 4 digits only for security
   cardExpiry  String
   bookingDate DateTime           @default(now())
+  paymentMethod String?
+  confirmedAt DateTime?
+  confirmationTotal Float?
+  cancellationRequested Boolean @default(false)
+}
+
+model BookingRequest {
+  id String @id @default(uuid())
+  userId Int
+  key String
+  scope String
+  requestHash String
+  state String @default("PENDING")
+  response Json?
+  statusCode Int?
+  createdAt DateTime @default(now())
+  @@unique([userId, key])
 }
 
 model Notification {
@@ -165,6 +205,7 @@ model AfsOfflineBooking {
   // A cancellation looks the row up by id, and the seat count subtracts the live
   // bookings that contain a flight.
   @@index([status])
+  @@index([flightIds(ops: JsonbPathOps)], type: Gin, map: "AfsOfflineBooking_flightIds_idx")
 }
 
 model City {

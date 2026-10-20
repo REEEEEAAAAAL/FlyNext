@@ -12,7 +12,13 @@
  * the derived split used by a caller that only has `flightIds`.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+// These functions are pure. Prevent their module's unrelated infrastructure
+// imports from creating a Prisma client or loading developer environment files.
+vi.mock("@/lib/prisma", () => ({
+	prisma: new Proxy({}, { get() { throw new Error("Pure direction tests must not access Prisma."); } }),
+	DEFAULT_TRANSACTION_OPTIONS: {},
+}));
 import { buildFlightLegs, splitFlightDirections } from "@/lib/reservations";
 import type { AfsFlight } from "@/types";
 
@@ -147,11 +153,28 @@ describe("splitFlightDirections", () => {
 describe("buildFlightLegs", () => {
 	/** The stored segment for one of the fixture legs. */
 	function stored(flight: AfsFlight) {
+		const isoOrNull = (value: string): string | null => {
+			const date = new Date(value);
+			return Number.isNaN(date.getTime()) ? null : date.toISOString();
+		};
 		return {
 			from: flight.origin.code,
 			to: flight.destination.code,
-			departDate: flight.departureTime,
-			arriveDate: flight.arrivalTime,
+			departDate: isoOrNull(flight.departureTime),
+			arriveDate: isoOrNull(flight.arrivalTime),
+			flightNumber: flight.flightNumber ?? null,
+			airlineCode: flight.airline.code,
+			airlineName: flight.airline.name,
+			originName: flight.origin.name,
+			originCity: flight.origin.city,
+			originCountry: flight.origin.country,
+			destinationName: flight.destination.name,
+			destinationCity: flight.destination.city,
+			destinationCountry: flight.destination.country,
+			durationMinutes: flight.durationMinutes ?? null,
+			status: flight.status,
+			price: flight.price,
+			currency: flight.currency ?? "USD",
 		};
 	}
 
@@ -221,6 +244,19 @@ describe("buildFlightLegs", () => {
 			to: "HKG",
 			departDate: null,
 			arriveDate: null,
+			flightNumber: null,
+			airlineCode: "AC",
+			airlineName: "Air Canada",
+			originName: "YYZ",
+			originCity: "YYZ",
+			originCountry: "",
+			destinationName: "HKG",
+			destinationCity: "HKG",
+			destinationCountry: "",
+			durationMinutes: null,
+			status: "SCHEDULED",
+			price: 100,
+			currency: "USD",
 		});
 	});
 

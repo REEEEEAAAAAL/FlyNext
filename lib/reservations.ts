@@ -13,11 +13,14 @@
  */
 
 import type { Prisma } from "@prisma/client";
-import { cancelFlight, createBooking } from "./afs-client";
-import { type ApiError, badGateway } from "./api/errors";
+import { randomUUID } from "node:crypto";
+import { cancelFlight, createBooking, isAfsOffline } from "./afs-client";
+import { type ApiError, badGateway, conflict } from "./api/errors";
 import { reportAlert, reportEvent } from "./api/events";
 import { eachNight } from "./api/validation";
 import { DEFAULT_TRANSACTION_OPTIONS, prisma } from "./prisma";
+import { lockTraveller, lockRoom, money } from "./booking-locks";
+import { assertDateAligned, materializeStay } from "./hotel-inventory";
 import type {
 	AfsBooking,
 	AfsCreateBookingRequest,
@@ -137,12 +140,13 @@ export async function releaseStayAvailability(
 	if (roomTypeId === null) {
 		return;
 	}
-	for (const date of eachNight(checkIn, checkOut)) {
-		await tx.roomAvailabilityRecord.updateMany({
-			where: { roomTypeId, date },
-			data: { availability: { increment: 1 } },
-		});
-	}
+	const firstNight = checkIn.toISOString().slice(0, 10);
+	const lastNight = checkOut.toISOString().slice(0, 10);
+	await tx.$executeRaw`UPDATE "RoomAvailabilityRecord" AS night
+		SET availability = LEAST(room."currentAvailability", night.availability + 1)
+		FROM "RoomType" AS room
+		WHERE night."roomTypeId" = room.id AND room.id = ${roomTypeId}
+		AND night.date >= ${firstNight}::date AND night.date < ${lastNight}::date`;
 }
 
 /**
@@ -159,7 +163,11 @@ export async function releaseStayAvailability(
 export async function cancelHotelReservation(
 	reservationId: number
 ): Promise<boolean> {
+	const owner = await prisma.hotelReservation.findUnique({ where: { id: reservationId }, select: { userId: true } });
+	if (!owner) return false;
 	return prisma.$transaction(async (tx) => {
+		await lockTraveller(tx, owner.userId);
+		await tx.$queryRaw`SELECT id FROM "HotelReservation" WHERE id = ${reservationId} FOR UPDATE`;
 		const reservation = await tx.hotelReservation.findUnique({
 			where: { id: reservationId },
 			select: {
@@ -169,10 +177,18 @@ export async function cancelHotelReservation(
 				checkOut: true,
 				price: true,
 				itineraryId: true,
+				status: true,
 			},
 		});
-		if (reservation === null) {
+		if (reservation === null || reservation.status === "CANCELLED") {
 			return false;
+		}
+		assertDateAligned(reservation.checkIn);
+		assertDateAligned(reservation.checkOut);
+		if (reservation.roomTypeId !== null) {
+			await lockRoom(tx, reservation.roomTypeId);
+			const room = await tx.roomType.findUnique({ where: { id: reservation.roomTypeId } });
+			if (room) await materializeStay(tx, room, reservation.checkIn, reservation.checkOut);
 		}
 
 		const claimed = await claimHotelCancellation(tx, reservation.id);
@@ -187,36 +203,24 @@ export async function cancelHotelReservation(
 			reservation.checkOut
 		);
 
-		await adjustItineraryTotal(tx, reservation.itineraryId, reservation.price);
+		await adjustItineraryTotal(tx, reservation.itineraryId);
 
 		return true;
 	}, DEFAULT_TRANSACTION_OPTIONS);
 }
 
-/**
- * Apply a price change to the itinerary a reservation belongs to.
- *
- * `updateMany` rather than `update`: a reservation can outlive its itinerary,
- * because deleting an itinerary nulls the child's foreign key while a copy of the
- * row loaded moments before still carries the stale `itineraryId`. `update` would
- * raise `P2025` and roll back the whole cancellation — for a flight, after the
- * airline had already cancelled the ticket, leaving a booking that is cancelled
- * upstream, still `CONFIRMED` locally, and impossible to cancel again because
- * every retry hits the same error. Matching zero rows instead lets the status
- * transition and the availability release commit.
- */
+/** Reprice the current active reservations after a successful cancellation claim. */
 async function adjustItineraryTotal(
 	tx: TransactionClient,
-	itineraryId: number | null,
-	amount: number
+	itineraryId: number | null
 ): Promise<void> {
 	if (itineraryId === null) {
 		return;
 	}
-	await tx.itinerary.updateMany({
-		where: { id: itineraryId },
-		data: { totalPrice: { decrement: amount } },
-	});
+	await tx.$executeRaw`UPDATE "Itinerary" AS trip SET "totalPrice" = round((
+		COALESCE((SELECT price FROM "FlightReservation" WHERE "itineraryId" = trip.id AND status = 'CONFIRMED'::"BookingStatus"), 0)::numeric +
+		COALESCE((SELECT price FROM "HotelReservation" WHERE "itineraryId" = trip.id AND status = 'CONFIRMED'::"BookingStatus"), 0)::numeric
+	), 2) WHERE trip.id = ${itineraryId}`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -459,15 +463,29 @@ export function buildSegment(flight: AfsFlight): FlightSegmentJson {
 		to: airportCode(flight.destination),
 		departDate: isoOrNull(flight.departureTime),
 		arriveDate: isoOrNull(flight.arrivalTime),
+		flightNumber: flight.flightNumber ?? null,
+		airlineCode: flight.airline.code,
+		airlineName: flight.airline.name,
+		originName: flight.origin.name,
+		originCity: flight.origin.city,
+		originCountry: flight.origin.country,
+		destinationName: flight.destination.name,
+		destinationCity: flight.destination.city,
+		destinationCountry: flight.destination.country,
+		durationMinutes: flight.durationMinutes ?? null,
+		status: flight.status,
+		price: flight.price,
+		currency: flight.currency ?? "USD",
 	};
 }
 
-/** Total of the leg prices, ignoring anything that is not a finite number. */
+/** Validate and sum provider prices to two decimal places. */
 export function totalFlightPrice(flights: readonly AfsFlight[]): number {
-	return flights.reduce(
+	if (flights.some(flight => !Number.isFinite(flight.price) || flight.price < 0 || (flight.currency && flight.currency !== "USD"))) throw badGateway("Flight provider returned an unsupported price or currency");
+	return money(flights.reduce(
 		(sum, flight) => sum + (Number.isFinite(flight.price) ? flight.price : 0),
 		0
-	);
+	));
 }
 
 /** Signature of the AFS booking call, injectable so tests can drive failures. */
@@ -509,6 +527,8 @@ export function afsBookingKey(booking: {
  * plus the one thing about an itinerary the provider's response does not say.
  */
 export interface FlightBookingOptions {
+	operationId?: string;
+	recoverOnly?: boolean;
 	createBooking?: CreateBookingCall;
 	cancelFlight?: CancelFlightCall;
 	/**
@@ -557,13 +577,14 @@ export async function createFlightReservation(
 	userId: number,
 	options: FlightBookingOptions = {}
 ): Promise<{ booking: AfsBooking; reservationId: number }> {
-	const book = options.createBooking ?? createBooking;
+	const book = options.createBooking ?? ((body: AfsCreateBookingRequest) => createBooking(body, options.operationId));
 	const compensate = options.cancelFlight ?? cancelFlight;
+	payload = { ...payload, passportNumber: `DEMO-${randomUUID()}` };
 
 	// Step 1: the upstream booking. A failure here leaves nothing to unwind.
 	const booking = await book(payload);
 
-	if (booking.flights.length === 0) {
+	if (booking.status !== "CONFIRMED" || booking.flights.length === 0) {
 		throw await releaseOrReport(
 			compensate,
 			afsBookingKey(booking),
@@ -578,19 +599,48 @@ export async function createFlightReservation(
 
 	// Step 2: the local mirror.
 	try {
-		const reservation = await prisma.flightReservation.create({
-			data: {
-				afsBookingId: afsBookingKey(booking),
-				userId,
-				departure: legs.departure,
-				arrival: legs.arrival,
-				price: totalFlightPrice(booking.flights),
-				status: "CONFIRMED",
-			},
-			select: { id: true },
-		});
-		return { booking, reservationId: reservation.id };
+		return await prisma.$transaction(async tx => {
+			if (options.operationId) {
+				await tx.$queryRaw`SELECT id FROM "BookingRequest" WHERE id = ${options.operationId} FOR UPDATE`;
+				const existing = await tx.bookingRequest.findUniqueOrThrow({ where: { id: options.operationId } });
+				if (existing.state === "COMPLETE" && existing.response && typeof existing.response === "object" && !Array.isArray(existing.response) && typeof existing.response.reservationId === "number") return { booking, reservationId: existing.response.reservationId };
+				if (existing.state !== "PENDING") throw conflict("This flight booking requires reconciliation");
+			}
+			const reservation = await tx.flightReservation.create({
+				data: {
+					afsBookingId: afsBookingKey(booking),
+					userId,
+					departure: legs.departure,
+					arrival: legs.arrival,
+					price: totalFlightPrice(booking.flights),
+					status: "CONFIRMED",
+					passengerLastName: payload.lastName,
+				},
+				select: { id: true },
+			});
+			const result = { booking, reservationId: reservation.id };
+			if (options.operationId) await tx.bookingRequest.update({ where: { id: options.operationId }, data: { state: "COMPLETE", statusCode: 201, response: JSON.parse(JSON.stringify({ message: "Flight booking completed successfully", ...booking, reservationId: reservation.id })) as Prisma.InputJsonValue } });
+			return result;
+		}, DEFAULT_TRANSACTION_OPTIONS);
 	} catch (error) {
+		if (options.recoverOnly) throw error;
+		if (options.operationId) {
+			try {
+				const recorded = await prisma.$transaction(async tx => {
+					await tx.$queryRaw`SELECT id FROM "BookingRequest" WHERE id = ${options.operationId} FOR UPDATE`;
+					const current = await tx.bookingRequest.findUniqueOrThrow({ where: { id: options.operationId } });
+					if (current.state === "PENDING") await tx.bookingRequest.update({ where: { id: current.id }, data: { state: "COMPENSATING" } });
+					return current;
+				}, DEFAULT_TRANSACTION_OPTIONS);
+				if (recorded.state === "COMPLETE" && recorded.response && typeof recorded.response === "object" && !Array.isArray(recorded.response)) {
+					const reservationId = recorded.response.reservationId;
+					if (typeof reservationId === "number") return { booking, reservationId };
+				}
+			} catch {
+				reportAlert("flight.booking.unresolved", { operationId: options.operationId, bookingReference: afsBookingKey(booking) });
+				throw badGateway("Booking status is unresolved; check your bookings and retain the recovery reference");
+			}
+		}
 		// Step 3: the ticket exists, the local row does not. Cancel the ticket.
 		throw await releaseOrReport(
 			compensate,
@@ -699,18 +749,17 @@ export type FlightCancellationOutcome = "cancelled" | "already-cancelled";
  */
 export async function cancelFlightReservation(
 	reservationId: number,
-	passengerLastName: string
+	_passengerLastName?: string
 ): Promise<FlightCancellationOutcome> {
-	const reservation = await prisma.flightReservation.findUnique({
-		where: { id: reservationId },
-		select: {
-			id: true,
-			afsBookingId: true,
-			price: true,
-			status: true,
-			itineraryId: true,
-		},
-	});
+	const owner = await prisma.flightReservation.findUnique({ where: { id: reservationId }, select: { userId: true } });
+	if (!owner) return "already-cancelled";
+	const reservation = await prisma.$transaction(async tx => {
+		await lockTraveller(tx, owner.userId);
+		await tx.$queryRaw`SELECT id FROM "FlightReservation" WHERE id = ${reservationId} FOR UPDATE`;
+		const row = await tx.flightReservation.findUnique({ where: { id: reservationId } });
+		if (row?.status === "CONFIRMED") await tx.flightReservation.update({ where: { id: reservationId }, data: { cancellationPending: true } });
+		return row;
+	}, DEFAULT_TRANSACTION_OPTIONS);
 	if (reservation === null) {
 		return "already-cancelled";
 	}
@@ -720,23 +769,42 @@ export async function cancelFlightReservation(
 
 	const cancellation = await cancelFlight(
 		reservation.afsBookingId,
-		passengerLastName
+		await ticketedLastName(reservation)
 	);
 	if (cancellation.status !== "CANCELLED") {
 		throw badGateway("Flight booking cancellation failed");
 	}
 
 	await prisma.$transaction(async (tx) => {
+		await lockTraveller(tx, owner.userId);
+		await tx.$queryRaw`SELECT id FROM "FlightReservation" WHERE id = ${reservationId} FOR UPDATE`;
+		const current = await tx.flightReservation.findUniqueOrThrow({ where: { id: reservationId } });
 		// Idempotent: only the call that flips CONFIRMED -> CANCELLED adjusts the price.
 		const claimed = await tx.flightReservation.updateMany({
 			where: { id: reservation.id, status: { not: "CANCELLED" } },
-			data: { status: "CANCELLED" },
+			data: { status: "CANCELLED", cancellationPending: false },
 		});
 		if (claimed.count === 0) {
 			return;
 		}
-		await adjustItineraryTotal(tx, reservation.itineraryId, reservation.price);
+		await adjustItineraryTotal(tx, current.itineraryId);
 	}, DEFAULT_TRANSACTION_OPTIONS);
 
 	return "cancelled";
+}
+
+export async function ticketedLastName(reservation: { passengerLastName: string | null; afsBookingId: string }): Promise<string> {
+	if (reservation.passengerLastName) return reservation.passengerLastName;
+	if (isAfsOffline()) {
+		const original = await prisma.afsOfflineBooking.findUnique({ where: { id: reservation.afsBookingId }, select: { lastName: true } });
+		if (original?.lastName) return original.lastName;
+	}
+	throw conflict("Historical passenger identity is unavailable; this booking requires reconciliation");
+}
+
+export function assertAllLegsScheduled(verification: { status: string; flights: readonly AfsFlight[] }): void {
+	const exception = verification.flights.find(leg => leg.status !== "SCHEDULED");
+	if (verification.status !== "CONFIRMED" || !verification.flights.length || exception) {
+		throw badGateway(exception ? `Flight ${exception.id} is ${exception.status}` : `Flight schedule is unavailable (${verification.status})`);
+	}
 }
