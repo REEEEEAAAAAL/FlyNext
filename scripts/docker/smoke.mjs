@@ -8,6 +8,14 @@ import { assertDockerDatabaseIdentity } from '../../dist/lib/docker-database-saf
 const db = new PrismaClient();
 const mode = process.argv[2] ?? 'run';
 const base = 'http://127.0.0.1:3000';
+const remote = process.env.AFS_MOCK === 'false';
+async function providerBooking(reference, lastName = 'Traveller') {
+  const response = await fetch(`http://afs:3000/api/bookings/retrieve?${new URLSearchParams({ bookingReference: reference, lastName })}`, {
+    headers: { 'x-api-key': process.env.AFS_API_KEY }, signal: AbortSignal.timeout(10000),
+  });
+  assert.equal(response.status, 200);
+  return response.json();
+}
 let token;
 let cookie;
 let phase = 'identity';
@@ -35,14 +43,16 @@ async function snapshot() {
     'stays', (SELECT json_agg(t ORDER BY id) FROM "HotelReservation" t),
     'trips', (SELECT json_agg(t ORDER BY id) FROM "Itinerary" t),
     'ledger', (SELECT json_agg(t ORDER BY id) FROM "AfsOfflineBooking" t),
+    'requests', (SELECT json_agg(t ORDER BY id) FROM "BookingRequest" t),
     'sessions', (SELECT json_agg(t ORDER BY "tokenHash") FROM "RefreshSession" t)
   )::text AS state`;
   return createHash('sha256').update(rows[0].state).digest('hex');
 }
 try {
   await assertDockerDatabaseIdentity(db, process.env);
-  assert.equal(process.env.AFS_MOCK, 'true');
-  assert.equal(process.env.AFS_BASE_URL, '');
+  assert.equal(process.env.AFS_MOCK, remote ? 'false' : 'true');
+  assert.equal(process.env.AFS_BASE_URL, remote ? 'http://afs:3000' : '');
+  console.log(`Verified provider mode: ${remote ? 'remote HTTP' : 'built-in'}`);
   if (mode === 'snapshot') {
     const digest = await snapshot();
     writeFileSync('/tmp/flynext-docker-snapshot', digest);
@@ -98,7 +108,7 @@ try {
     const detail = await json(detailPath);
     assert.ok(!JSON.stringify(detail).includes('reservations'));
     console.log('PASS hotel/room catalogue, privacy projection and nightly inventory');
-    phase = 'built-in AFS';
+    phase = remote ? 'remote HTTP AFS' : 'built-in AFS';
     const groups = await json(`/api/flights/search?origin=YYZ&destination=LHR&date=${checkIn}`);
     assert.ok(groups.length > 0 && groups[0].flights.length > 0);
     const flightKey = randomUUID();
@@ -106,14 +116,20 @@ try {
     const flight = await json('/api/flights/book', 201, 'POST', flightBody, flightKey);
     const replayFlight = await json('/api/flights/book', 201, 'POST', flightBody, flightKey);
     assert.equal(replayFlight.reservationId, flight.reservationId);
-    assert.ok(await db.afsOfflineBooking.count() > 0);
+    if (remote) {
+      const issued = await providerBooking(flight.bookingReference);
+      assert.equal(issued.status, 'CONFIRMED');
+      assert.deepEqual(issued.flights.map(row => row.id).sort(), flightBody.flightIds.toSorted());
+      const local = await db.flightReservation.findUniqueOrThrow({ where: { id: flight.reservationId } });
+      assert.equal(local.afsBookingId, flight.bookingReference);
+    } else assert.ok(await db.afsOfflineBooking.count() > 0);
     phase = 'hotel reservation';
     const stayBody = { hotelId: room.hotelId, roomTypeId: room.id, checkIn, checkOut };
     const stayKey = randomUUID();
     const stay = (await json('/api/hotels/book', 201, 'POST', stayBody, stayKey)).reservation;
     assert.equal((await json('/api/hotels/book', 201, 'POST', stayBody, stayKey)).reservation.id, stay.id);
     assert.deepEqual(await inventory(), baseline.map(row => ({ availability: row.availability - 1 })));
-    console.log('PASS built-in AFS search/booking, durable ledger, hotel booking and idempotent inventory decrement');
+    console.log(`PASS ${remote ? 'remote HTTP AFS ticket and local mirror' : 'built-in AFS durable ledger'}, booking replay and hotel inventory decrement`);
     phase = 'itinerary and checkout';
     const trip = (await json('/api/itineraries', 201, 'POST', { flightReservationId: flight.reservationId, hotelReservationId: stay.id }, randomUUID())).reservations;
     await json('/api/checkout', 200, 'POST', { itineraryId: String(trip.id), paymentMethod: 'DEMO' }, randomUUID());
@@ -130,6 +146,7 @@ try {
     await json(`/api/itineraries/${trip.id}`, 200, 'DELETE');
     assert.deepEqual(await inventory(), baseline);
     assert.equal((await db.flightReservation.findUniqueOrThrow({ where: { id: flight.reservationId } })).status, 'CANCELLED');
+    if (remote) assert.equal((await providerBooking(flight.bookingReference)).status, 'CANCELLED');
     assert.equal((await db.hotelReservation.findUniqueOrThrow({ where: { id: stay.id } })).status, 'CANCELLED');
     await json(`/api/itineraries/${trip.id}`, 200, 'DELETE');
     assert.deepEqual(await inventory(), baseline);

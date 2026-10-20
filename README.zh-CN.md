@@ -134,7 +134,7 @@ npm run dev
 | `JWT_REFRESH_TOKEN_EXPIRY_TIME` | 刷新 Cookie 有效期，例如 `7d`。 |
 | `CLOUDINARY_CLOUD_NAME`、`CLOUDINARY_API_KEY`、`CLOUDINARY_API_SECRET` | Cloudinary 上传凭据。`CLOUDINARY_URL` 可作为合并配置；`CLOUDINARY_FOLDER` 设置资源目录。 |
 | `AFS_BASE_URL`、`AFS_API_KEY`、`AFS_MOCK` | 选择远程 AFS 服务并进行鉴权，或强制使用内置供应商。参见[航班供应商](#航班供应商)。 |
-| `AFS_LOCAL_AGENCY`、`AFS_SEED_DAYS` | 独立运行的 AFS 容器本地数据初始化设置；内置供应商不需要这些变量。 |
+| `AFS_LOCAL_AGENCY`、`AFS_SEED_DAYS`、`AFS_LOCAL_API_KEY`、`AFS_DOCKER_*` | 可选 AFS 服务、合成时刻表和独立数据库的专用 Docker 生成配置；内置供应商无需配置。参见 [Docker 指南](docs/DOCKER.md)。 |
 | `POSTGRES_USER`、`POSTGRES_PASSWORD`、`POSTGRES_DB` | 供可选 Compose 数据库配置使用；连接现有 PostgreSQL 服务时不需要。 |
 
 不要提交 `.env`、数据库凭据、签名密钥、Cloudinary 密钥或供应商 API 密钥。`.env.example` 中只有占位值，不是可用凭据。
@@ -156,7 +156,7 @@ npm run dev
 | `npm run build` | 创建 Next.js 生产构建。 |
 | `npm audit --audit-level=high` | 检查高危及以上级别的依赖安全公告。 |
 
-默认 `npm test` 工作流不会读取环境文件或连接数据库。集成和 E2E 测试使用 `.env.test` 及独立登记的 Neon `flynext_test` 目标，并可能迁移数据库和清理合成测试数据。必须依次运行 `test:db:verify`、`test:integration` 和 `test:e2e`，不能指向开发库或生产库。E2E 在构建后以单 worker 模式启动自己的 3210 端口生产服务器。运行数据库测试前请阅读[开发指南](docs/DEVELOPMENT.md)。仅依赖 Docker Desktop / Compose 的完整应用与独立 PostgreSQL 部署，请参阅 [Docker 使用指南](docs/DOCKER.md)。指南包含独立凭据生成、身份核验、首次完整演示数据初始化、持久化、显式重置和容器业务烟测。默认使用内置 AFS；可选独立 AFS 联调为 Deferred。
+默认 `npm test` 工作流不会读取环境文件或连接数据库。集成和 E2E 测试使用已核验的专用 loopback 测试库或独立登记的 Neon `flynext_test` 目标，并可能迁移数据库和清理合成测试数据。必须依次运行 `test:db:verify`、`test:integration` 和 `test:e2e`，不能指向开发库或生产库。E2E 在构建后以单 worker 模式启动自己的 3210 端口生产服务器。运行数据库测试前请阅读[开发指南](docs/DEVELOPMENT.md)。仅依赖 Docker Desktop / Compose 的完整应用与独立 PostgreSQL 部署，请参阅 [Docker 使用指南](docs/DOCKER.md)。指南包含独立凭据生成、身份核验、首次完整演示数据初始化、持久化、显式重置和容器业务烟测。默认（包括生产环境）仍使用内置 AFS。可选四服务独立 AFS 使用加固的私有供应商；隔离配置、故障恢复、并发检查和持久化命令见 Docker 指南。
 
 数据库校验命令会验证目标确实是已登记的测试库；仅凭库名带有 `_test` 后缀不足以证明安全。测试套件拒绝生产库和未登记的远程库，并在破坏性操作前后再次核验数据库身份。不要绕过项目运行器，也不要让 E2E 复用已运行的服务器。CI 数据库测试需要另行登记的独立端点和受限角色；复制开发者的 `.env.test` 并不能完成 CI 配置。
 
@@ -174,9 +174,9 @@ npm run dev
 FlyNext 的 AFS 客户端契约支持两种按请求选择的后端：
 
 - **内置供应商：** 当 `AFS_BASE_URL` 为空或不是有效服务地址时默认使用。它在应用进程内运行，支持搜索及票务生命周期，并在配置数据库时持久化离线预订。开发和部署无需另行部署航班服务；其航班时刻和票务库存均为演示数据。
-- **远程 AFS：** 将 `AFS_BASE_URL` 设置为可访问的 HTTP(S) AFS 服务，并提供 `AFS_API_KEY`。有效的 `AFS_BASE_URL` 会选择远程模式，除非设置了 `AFS_MOCK=true`；当地址有效时，`AFS_MOCK=false` 也会选择远程模式。地址为空或为占位地址时会使用内置供应商。远程响应会在进入应用逻辑前通过结构校验。
+- **远程 AFS：** 将 `AFS_BASE_URL` 设置为可访问的 HTTP(S) AFS 服务，并提供 `AFS_API_KEY`。有效的 `AFS_BASE_URL` 会选择远程模式，除非设置了 `AFS_MOCK=true`；`AFS_MOCK=false` 明确要求远程模式，地址缺失或无效时会报错。未显式要求远程模式时，地址为空或为占位地址会使用内置供应商。远程响应会在进入应用逻辑前通过结构校验。
 
-远程供应商是一个集成接口，不代表外部 AFS 服务当前已部署或通过验收。服务契约参见 [AFS 项目](https://github.com/Kianoosh76/afs)。
+可选本地 Compose 集成固定[上游 Commit b3eee4e](https://github.com/Kianoosh76/afs/commit/b3eee4edd597bfc0545ff99fbbf4e2c0c065b222)，并应用版本化的 `afs/hardened` 补丁与独立锁文件：Next.js 15.5.28、React 19.0.9、Prisma 6.3.1。私有供应商通过原子库存操作、代理隔离、完整 reference 和持久化幂等保护票务；FlyNext 在 Docker 中持久化恢复状态，并自动核对中断的预订和取消。操作见 [Docker 指南](docs/DOCKER.md#optional-standalone-afs)。
 
 ## 部署
 
@@ -210,6 +210,6 @@ FlyNext 的 AFS 客户端契约支持两种按请求选择的后端：
 ## 限制与许可
 
 - 结账仅用于演示，不会处理真实支付、退款、银行卡号或护照信息。
-- 内置 AFS 航班时刻和票务库存是合成数据。远程 AFS 服务和 Cloudinary 凭据需要单独配置；本文不声称已验证其实时集成。
+- AFS 航班时刻和票务库存均为合成数据。本地 Compose 支持内置供应商及可选私有 AFS 服务。真实航司出票和公网云端 AFS 运维不属于本地演示范围。Cloudinary 是可选图片存储服务。
 - 自动化数据库测试要求使用独立隔离的测试数据库。测试配置见[开发指南](docs/DEVELOPMENT.md)。
 - 本项目用于教学和作品集展示。仓库未声明正式开源许可证；商业复用前请先征得仓库所有者同意。

@@ -1,5 +1,5 @@
 import type { PrismaClient } from "@prisma/client";
-import { searchFlights, isAfsOffline } from "../lib/afs-client";
+import { searchFlights } from "../lib/afs-client";
 import { createFlightReservation } from "../lib/reservations";
 import { prisma as flightDb } from "../lib/prisma";
 import { lockRoom, lockTraveller, money } from "../lib/booking-locks";
@@ -7,7 +7,6 @@ import { eachNight, parseStayRange } from "../lib/api/validation";
 import { materializeStay } from "../lib/hotel-inventory";
 
 export async function seedDockerJourney(db: PrismaClient): Promise<void> {
-	if (!isAfsOffline()) throw new Error("Docker demo journey requires the built-in AFS.");
 	const user = await db.user.findUniqueOrThrow({ where: { email: "user1@example.com" } });
 	const room = await db.roomType.findFirstOrThrow({ where: { hotel: { location: { contains: "Toronto" } } }, orderBy: { id: "asc" } });
 	const day = (offset: number) => new Date(Date.now() + offset * 86400000).toISOString().slice(0, 10);
