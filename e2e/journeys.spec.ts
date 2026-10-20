@@ -27,14 +27,31 @@ async function register(page:Page,email:string) {
 
 test("visitor, registration, flight and hotel, combined trip, DEMO receipt, owner visibility and cancellation", async ({page, browser})=>{
   test.setTimeout(240_000);
-  const runtimeErrors:string[]=[];
-  page.on("pageerror",error=>runtimeErrors.push(error.message));
+  let phase = "visitor and registration";
+  const runtimeErrors: {message:string;path:string;phase:string}[]=[];
+  page.on("pageerror",error=>runtimeErrors.push({message:error.message,path:new URL(page.url()).pathname,phase}));
+  await page.addInitScript(() => {
+    window.addEventListener("error", () => {
+      console.info("FlyNext runtime context", JSON.stringify({
+        path: location.pathname,
+        readyState: document.readyState,
+        mainElement: document.querySelector("main")?.firstElementChild?.tagName ?? null,
+        darkTheme: document.documentElement.classList.contains("dark"),
+        accountExpanded: document.querySelector('[aria-controls="account-links"]')?.getAttribute("aria-expanded") ?? null,
+      }));
+    });
+  });
   await page.goto(`/hotels/${fixture.hotelId}/room-types/${fixture.roomId}?checkIn=${fixture.checkIn}&checkOut=${fixture.checkOut}`);
   await page.getByRole("button",{name:"Reserve room",exact:true}).click();
   await expect(page).toHaveURL(/\/auth\/login\?next=/);
   await register(page,"e2e-traveller@example.invalid");
-  await page.goto("/auth/logout");
-  await expect(page).toHaveURL(/\/auth\/login/);
+  phase = "first logout after registration";
+  await test.step(phase, async () => {
+    await page.goto("/auth/logout");
+    await expect(page).toHaveURL(/\/auth\/login/);
+    await expect(page.getByRole("button",{name:"Login",exact:true})).toBeVisible();
+  });
+  phase = "login, booking and cancellation";
   await page.getByLabel("Email:",{exact:true}).fill("e2e-traveller@example.invalid");
   await page.getByLabel("Password:",{exact:true}).fill("intentionally-wrong");
   await page.getByRole("button",{name:"Login",exact:true}).click();
@@ -104,12 +121,18 @@ test("visitor, registration, flight and hotel, combined trip, DEMO receipt, owne
   await expect(dialog).toBeHidden();
   await expect(cancel).toBeFocused();
   await cancel.click();
+  const cancellationResponse = page.waitForResponse(response => response.url().endsWith(`/api/itineraries/${itineraryId}`) && response.request().method() === "DELETE", {timeout:60_000});
   await dialog.getByRole("button",{name:"Yes, cancel everything",exact:true}).click();
+  expect((await cancellationResponse).status()).toBe(200);
   await expect(cancel).toBeDisabled();
   await page.goto(`/hotels/${fixture.hotelId}/room-types/${fixture.roomId}?checkIn=${fixture.checkIn}&checkOut=${fixture.checkOut}`);
   await expect(page.getByText(/2 nights.*200.00 USD.*3 rooms available/)).toBeVisible();
-  await page.goto("/auth/logout");
-  await expect(page).toHaveURL(/\/auth\/login/);
+  phase = "final logout after cancellation and inventory restoration";
+  await test.step(phase, async () => {
+    await page.goto("/auth/logout");
+    await expect(page).toHaveURL(/\/auth\/login/);
+    await expect(page.getByRole("button",{name:"Login",exact:true})).toBeVisible();
+  });
   expect(runtimeErrors).toEqual([]);
 });
 

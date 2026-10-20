@@ -62,12 +62,11 @@ export default function RootLayout({
           */}
         <ThemeProvider>
           <FeedbackProvider>
-            <SessionProvider>
             <a href="#main-content" className="skip-link">Skip to content</a>
             <NavigationBar />
-            <main id="main-content" className="app-main" tabIndex={-1}>{children}</main>
+            {/* Resolve lazy route content inside a client component during hydration replay. */}
+            <main id="main-content" className="app-main" tabIndex={-1}><SessionProvider>{children}</SessionProvider></main>
             <footer className="site-footer"><Link href="/">FlyNext</Link><span>A portfolio travel demo. No real payments.</span><Link href="/hotels/owner">Host workspace</Link></footer>
-            </SessionProvider>
           </FeedbackProvider>
         </ThemeProvider>
         <Analytics />
