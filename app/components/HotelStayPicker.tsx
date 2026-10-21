@@ -94,13 +94,13 @@ export default function HotelStayPicker({ hotelId, rooms, roomDetail = false }: 
    router.replace(`${window.location.pathname}${query}`, {scroll:false});
    void load().then(loaded => { if (loaded) setSelected(`${checkIn}/${checkOut}`); });
   }}>
-   <label className="label min-w-0">Check-in<input className="field mt-1 w-full min-w-0" type="date" required max={latestCheckIn} value={checkIn} disabled={booking} onChange={event => setCheckIn(event.target.value)} /></label>
-   <label className="label min-w-0">Check-out<input className="field mt-1 w-full min-w-0" type="date" required min={checkIn || undefined} max={latestCheckOut} value={checkOut} disabled={booking} onChange={event => setCheckOut(event.target.value)} /></label>
+   <label className="label min-w-0">Check-in<input className="field mt-1 w-full min-w-0" type="date" required min={today.toISOString().slice(0, 10)} max={latestCheckIn} value={checkIn} disabled={booking} onChange={event => setCheckIn(event.target.value)} /></label>
+   <label className="label min-w-0">Check-out<input className="field mt-1 w-full min-w-0" type="date" required min={checkIn ? addDays(new Date(`${checkIn}T00:00:00Z`), 1).toISOString().slice(0, 10) : addDays(today, 1).toISOString().slice(0, 10)} max={latestCheckOut} value={checkOut} disabled={booking} onChange={event => setCheckOut(event.target.value)} /></label>
    <button className="button-primary" disabled={loading || booking}>Check dates & availability</button>
   </form>
   {loading && <p role="status">Loading availability...</p>}
   {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
-  {reservation && <p role="status">Room booked for {reservation.checkIn} to {reservation.checkOut}. <Link className="underline" href={`/user/hotel-bookings/${reservation.id}`}>View reservation #{reservation.id}</Link></p>}
+  {reservation && <p role="status">Room booked for {reservation.checkIn} to {reservation.checkOut}. <Link className="underline" href={`/user/hotel-bookings/${reservation.id}`}>View reservation #{reservation.id}</Link>. <Link className="underline" href="/itineraries/new">Build an itinerary</Link></p>}
   {rooms.map(room => {
    const count = available(room.id);
    const rate = Math.round((room.pricePerNight + Number.EPSILON) * 100) / 100;

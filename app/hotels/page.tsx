@@ -3,7 +3,7 @@
 import { loginUrl } from "@/app/lib/return-path";
 
 import { acknowledgeBooking, bookingRequest } from "@/app/lib/booking-request";
-import { getAccessToken, sessionFetch } from "@/app/lib/session";
+import { getAccessToken, sessionFetch, recoverSession } from "@/app/lib/session";
 
 import LocationCombobox from "@/app/components/LocationCombobox";
 import BookingSteps from "@/app/components/BookingSteps";
@@ -90,9 +90,8 @@ export default function HotelSearchPage() {
     }, [loadHotels]);
 
     // Redirect to login if not logged in
-    const ensureLoggedIn = (): boolean => {
-        const token = getAccessToken();
-        if (!token) {
+    const ensureLoggedIn = async (): Promise<boolean> => {
+        if (!await recoverSession()) {
             router.push(loginUrl(`/hotels?${new URLSearchParams({ city, checkIn, checkOut })}`));
             return false;
         }
@@ -133,7 +132,7 @@ export default function HotelSearchPage() {
      * answered without a round trip and without a reservation id in the message.
      */
     const handleBookRoom = async (hotelId: number, roomTypeId: number) => {
-        if (!ensureLoggedIn()) return;
+        if (!await ensureLoggedIn()) return;
 
         if (!checkIn || !checkOut) {
             warning("Pick your dates first", {
@@ -192,7 +191,7 @@ export default function HotelSearchPage() {
 
             const data = await res.json();
 
-            if (bookingSearchVersion === searchVersion.current) await loadHotels(city, checkIn, checkOut);
+            if (bookingSearchVersion === searchVersion.current) await loadHotels(city, checkIn, checkOut, filters);
 
             setLastReservation({ id: data.reservation.id, checkIn, checkOut });
             success("Room booked", {
@@ -340,6 +339,7 @@ export default function HotelSearchPage() {
                         id="check-in"
                         type="date"
                         value={checkIn}
+                        min={today.toISOString().slice(0, 10)}
                         max={latestCheckIn}
                         onChange={(e) => setCheckIn(e.target.value)}
                         required
@@ -353,7 +353,7 @@ export default function HotelSearchPage() {
                     <input
                         id="check-out"
                         type="date"
-                        min={checkIn || undefined}
+                        min={checkIn ? addDays(new Date(`${checkIn}T00:00:00Z`), 1).toISOString().slice(0, 10) : addDays(today, 1).toISOString().slice(0, 10)}
                         max={latestCheckOut}
                         value={checkOut}
                         onChange={(e) => setCheckOut(e.target.value)}

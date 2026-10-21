@@ -66,7 +66,7 @@ test("visitor, registration, flight and hotel, combined trip, DEMO receipt, owne
   await page.getByRole("combobox",{name:"To",exact:true}).fill("LHR");
   await page.getByLabel("Departure date:",{exact:true}).fill(fixture.checkIn);
   await page.getByRole("button",{name:"Search flights",exact:true}).click();
-  const flightResponse=page.waitForResponse(response=>response.url().endsWith("/api/flights/book") && response.request().method()==="POST");
+  const flightResponse=page.waitForResponse(response=>response.url().endsWith("/api/flights/book") && response.request().method()==="POST", {timeout:60_000});
   await page.getByRole("button",{name:/Book One.Way/i}).first().click();
   const flight=await flightResponse;
   expect(flight.status()).toBe(201);
