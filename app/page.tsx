@@ -8,7 +8,7 @@ export default function HomePage() {
         <h1>Your next chapter<br />starts with a trip.</h1>
         <p className="hero-description">Find your flight, discover a place to stay, and bring it all together. One thoughtful space for every part of your journey.</p>
         <div className="flex flex-wrap gap-3 mt-8"><Link className="button-primary" href="/flights">Explore flights →</Link><Link className="button-secondary" href="/hotels">Find a stay</Link></div>
-        <p className="mt-6 text-sm muted">A travel booking demo. Real exploration, simulated payments.</p>
+        <p className="mt-6 text-sm muted">A travel booking demo. No real tickets or payments.</p>
       </div>
       <div className="journey-art" aria-label="Illustration of a journey from city to coast" role="img">
         <div className="art-sun" /><div className="art-mountain mountain-back" /><div className="art-mountain mountain-front" />
@@ -20,7 +20,7 @@ export default function HomePage() {
       {[
         ["01", "Find your way", "Compare flight routes and choose a stay for your dates.", "/flights", "Start searching"],
         ["02", "Make it a trip", "Reserve first, then link your flight and hotel in one itinerary.", "/itineraries/new", "Build an itinerary"],
-        ["03", "Keep it together", "Review your plans, confirm with DEMO payment, and download a receipt.", "/itineraries", "View my trips"],
+        ["03", "Keep it together", "Review your plans, confirm with DEMO checkout, and download a receipt.", "/itineraries", "View my trips"],
       ].map(([number, title, copy, href, action]) => <Link className="step-card" href={href} key={number}><span className="step-number">{number}</span><h2>{title}</h2><p>{copy}</p><span className="step-action">{action} →</span></Link>)}
     </section>
     <section className="host-banner"><div><p className="eyebrow">A SPACE FOR HOSTS, TOO</p><h2>Great stays start with you.</h2><p className="muted">Manage your properties, room availability and guest reservations.</p></div><Link className="button-secondary" href="/hotels/owner">Open host workspace</Link></section>

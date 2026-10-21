@@ -66,7 +66,7 @@ test("visitor, registration, flight and hotel, combined trip, DEMO receipt, owne
   await page.getByRole("combobox",{name:"To",exact:true}).fill("LHR");
   await page.getByLabel("Departure date:",{exact:true}).fill(fixture.checkIn);
   await page.getByRole("button",{name:"Search flights",exact:true}).click();
-  const flightResponse=page.waitForResponse(response=>response.url().endsWith("/api/flights/book") && response.request().method()==="POST");
+  const flightResponse=page.waitForResponse(response=>response.url().endsWith("/api/flights/book") && response.request().method()==="POST", {timeout:60_000});
   await page.getByRole("button",{name:/Book One.Way/i}).first().click();
   const flight=await flightResponse;
   expect(flight.status()).toBe(201);
@@ -182,6 +182,7 @@ for (const viewport of [{name:"desktop",width:1440,height:1000},{name:"tablet",w
           await expect(from).toHaveValue("YYZ");
         }
         if (path.includes("room-types")) await expect(page.getByRole("button",{name:"Reserve room",exact:true})).toBeEnabled();
+        if (path === "/flights") await page.screenshot({path:`docs/screenshots/ui-flights-${viewport.width}-${theme}.png`,fullPage:true});
         expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
         const violations=(await new AxeBuilder({page}).withTags(["wcag2a","wcag2aa","wcag21a","wcag21aa"]).analyze()).violations;
         expect(violations.map(row=>({id:row.id,impact:row.impact,nodes:row.nodes.map(node=>node.target)}))).toEqual([]);

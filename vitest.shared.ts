@@ -1,6 +1,7 @@
 import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL(".", import.meta.url));
 export const unitTestFiles = [
+    "tests/search-state.test.ts",
 	"tests/hotel-inventory-horizon.test.ts",
     "tests/hotel-date-repair.test.ts",
     "tests/return-path.test.ts",

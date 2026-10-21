@@ -1,460 +1,177 @@
 "use client";
 
-import { loginUrl } from "@/app/lib/return-path";
-
-import { acknowledgeBooking, bookingRequest } from "@/app/lib/booking-request";
-import { getAccessToken, sessionFetch } from "@/app/lib/session";
-
-import LocationCombobox from "@/app/components/LocationCombobox";
-import BookingSteps from "@/app/components/BookingSteps";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import LocationCombobox from "@/app/components/LocationCombobox";
+import BookingSteps from "@/app/components/BookingSteps";
+import ReservationSuccess from "@/app/components/ReservationSuccess";
+import { acknowledgeBooking, bookingRequest } from "@/app/lib/booking-request";
+import { sessionFetch, recoverSession } from "@/app/lib/session";
+import { loginUrl } from "@/app/lib/return-path";
+import { formatStayDate, stayNights } from "@/app/lib/booking-display";
+import { EMPTY_HOTEL_SEARCH, hotelCheckoutMin, hotelSearchParams, hotelSearchPath, readHotelSearch, validateHotelSearch, type HotelSearch } from "@/app/lib/hotel-search";
 import { useFeedback } from "@/app/context/FeedbackContext";
-import { stayNights } from "@/app/lib/booking-display";
-import { addDays, atMidnight, AVAILABILITY_HORIZON_DAYS, AVAILABILITY_HORIZON_ERROR, isStayWithinAvailabilityHorizon } from "@/lib/api/validation";
-
-// Hotel interfaces
-interface Hotel {
-    id: number;
-    name: string;
-    address: string;
-    location: string;
-    starRating: number;
-    images?: string[];
-    roomTypes: RoomType[];
-}
-
-const EMPTY_HOTEL_FILTERS = { name: "", starRating: "", priceMin: "", priceMax: "" };
+import { addDays, atMidnight, AVAILABILITY_HORIZON_DAYS } from "@/lib/api/validation";
 
 interface RoomType {
-    id: number;
-    name: string;
-    amenities: string | null;
-    pricePerNight: number;
-    currentAvailability: number;
-    availableRooms?: number | null;
-    nights?: number | null;
-    stayTotal?: number | null;
-    currency?: string;
+  id: number;
+  name: string;
+  amenities: string | null;
+  pricePerNight: number;
+  availableRooms?: number | null;
+  stayTotal?: number | null;
+}
+interface Hotel {
+  id: number;
+  name: string;
+  address: string;
+  location: string;
+  starRating: number;
+  images?: string[];
+  roomTypes: RoomType[];
 }
 
 export default function HotelSearchPage() {
-    const router = useRouter();
-    const { success, error: toastError, warning, info } = useFeedback();
-    const [city, setCity] = useState("");
-    const [checkIn, setCheckIn] = useState("");
-    const [checkOut, setCheckOut] = useState("");
-    useEffect(() => {
-        const saved = new URLSearchParams(window.location.search);
-        setCity(saved.get("city") ?? ""); setCheckIn(saved.get("checkIn") ?? ""); setCheckOut(saved.get("checkOut") ?? "");
-    }, []);
+  const router = useRouter();
+  const { error: toastError } = useFeedback();
+  const [draft, setDraft] = useState<HotelSearch>(EMPTY_HOTEL_SEARCH);
+  const [applied, setApplied] = useState<HotelSearch>(EMPTY_HOTEL_SEARCH);
+  const [hotels, setHotels] = useState<Hotel[]>([]);
+  const [error, setError] = useState("");
+  const [canRetry, setCanRetry] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [pendingRoom, setPendingRoom] = useState("");
+  const [bookedRoom, setBookedRoom] = useState("");
+  const [bookingFailure, setBookingFailure] = useState("");
+  const [reservation, setReservation] = useState<{id:number;summary:string} | null>(null);
+  const searchVersion = useRef(0);
+  const searchController = useRef<AbortController | null>(null);
+  const lastRequest = useRef<HotelSearch>(EMPTY_HOTEL_SEARCH);
+  const bookingInFlight = useRef(false);
 
-    const [availabilityStay, setAvailabilityStay] = useState("");
-    const [filters, setFilters] = useState(EMPTY_HOTEL_FILTERS);
-    const [hotels, setHotels] = useState<Hotel[]>([]);
-    const [error, setError] = useState("");
-    const [lastReservation, setLastReservation] = useState<{ id: number; checkIn: string; checkOut: string } | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [bookingStatus, setBookingStatus] = useState<{
-        [key: string]: "idle" | "loading" | "success" | "error";
-    }>({});
+  const loadHotels = useCallback(async (search: HotelSearch) => {
+    const version = ++searchVersion.current;
+    searchController.current?.abort();
+    const controller = new AbortController();
+    searchController.current = controller;
+    lastRequest.current = search;
+    setError(""); setCanRetry(false); setLoading(true);
+    const invalid = validateHotelSearch(search);
+    if (invalid) { setError(invalid); setLoading(false); return; }
+    try {
+      const response = await sessionFetch(`/api/hotels?${hotelSearchParams(search)}`, {signal:controller.signal});
+      const data: {hotels?:Hotel[];error?:string} = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not load stays. Please try again.");
+      if (version !== searchVersion.current || controller.signal.aborted) return;
+      setHotels(data.hotels ?? []); setApplied(search);
+    } catch (failure) {
+      if (version === searchVersion.current && !controller.signal.aborted) { setError(failure instanceof Error ? failure.message : "Could not load stays."); setCanRetry(true); }
+    } finally {
+      if (version === searchVersion.current && !controller.signal.aborted) setLoading(false);
+    }
+  }, []);
 
-    const searchVersion = useRef(0);
-    const searchController = useRef<AbortController | null>(null);
-    const loadHotels = useCallback(async (selectedCity = "", arrival = "", departure = "", selectedFilters = EMPTY_HOTEL_FILTERS) => {
-        const version = ++searchVersion.current;
-        searchController.current?.abort();
-        const controller = new AbortController();
-        searchController.current = controller;
-        setLoading(true); setError("");
-        try {
-            const query = new URLSearchParams({ city: selectedCity, checkIn: arrival, checkOut: departure, ...selectedFilters });
-            const response = await sessionFetch(`/api/hotels?${query}`, { signal: controller.signal });
-            const data = await response.json();
-            if (!response.ok) throw new Error(data.error || "Could not load stays. Please try again.");
-            if (version !== searchVersion.current || controller.signal.aborted) return;
-            setHotels(data.hotels || []);
-            setAvailabilityStay(arrival && departure ? `${arrival}/${departure}` : "");
-        } catch (failure) {
-            if (!controller.signal.aborted && version === searchVersion.current) setError(failure instanceof Error ? failure.message : "Could not load stays.");
-        } finally {
-            if (!controller.signal.aborted && version === searchVersion.current) setLoading(false);
-        }
-    }, []);
-    useEffect(() => {
-        const saved = new URLSearchParams(window.location.search);
-        const arrival = saved.get("checkIn") ?? ""; const departure = saved.get("checkOut") ?? "";
-        void loadHotels(saved.get("city") ?? "", arrival, departure, EMPTY_HOTEL_FILTERS);
-        return () => { searchVersion.current += 1; searchController.current?.abort(); };
-    }, [loadHotels]);
-
-    // Redirect to login if not logged in
-    const ensureLoggedIn = (): boolean => {
-        const token = getAccessToken();
-        if (!token) {
-            router.push(loginUrl(`/hotels?${new URLSearchParams({ city, checkIn, checkOut })}`));
-            return false;
-        }
-        return true;
+  useEffect(() => {
+    const restore = () => {
+      const search = readHotelSearch(new URLSearchParams(window.location.search));
+      setDraft(search); setBookedRoom("");
+      void loadHotels(search);
     };
+    restore();
+    window.addEventListener("popstate", restore);
+    return () => { window.removeEventListener("popstate", restore); searchVersion.current += 1; searchController.current?.abort(); };
+  }, [loadHotels]);
 
-    const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-        event.preventDefault();
-        if ((stayNights(checkIn, checkOut) ?? 0) < 1) { setError("Check-out must be after check-in."); return; }
-        if (!isStayWithinAvailabilityHorizon(new Date(`${checkIn}T00:00:00.000Z`), new Date(`${checkOut}T00:00:00.000Z`))) { setError(AVAILABILITY_HORIZON_ERROR); return; }
-        if (filters.priceMin && filters.priceMax && Number(filters.priceMin) > Number(filters.priceMax)) { setError("Maximum nightly rate must be at least the minimum."); return; }
-        setBookingStatus({});
-        void loadHotels(city, checkIn, checkOut, filters);
-    };
+  const applySearch = (search: HotelSearch) => {
+    const invalid = validateHotelSearch(search);
+    if (invalid) { searchVersion.current++; searchController.current?.abort(); setLoading(false); setCanRetry(false); setError(invalid); return; }
+    const path = hotelSearchPath(search);
+    if (path !== window.location.pathname + window.location.search) window.history.pushState(null, "", path);
+    setDraft(search); setBookedRoom("");
+    void loadHotels(search);
+  };
+  const clearFilters = () => applySearch({...draft,name:"",starRating:"",priceMin:"",priceMax:""});
+  const chooseDates = () => { document.getElementById(draft.checkIn && !draft.checkOut ? "check-out" : "check-in")?.focus(); };
+  const dirty = hotelSearchParams(draft).toString() !== hotelSearchParams(applied).toString();
+  const nights = stayNights(draft.checkIn, draft.checkOut) ?? 0;
+  const hasFilters = Boolean(draft.name || draft.starRating || draft.priceMin || draft.priceMax);
+  const today = atMidnight(new Date());
+  const earliest = today.toISOString().slice(0,10);
+  const latestCheckIn = addDays(today,AVAILABILITY_HORIZON_DAYS).toISOString().slice(0,10);
+  const latestCheckOut = addDays(today,AVAILABILITY_HORIZON_DAYS+1).toISOString().slice(0,10);
+  const detailQuery = draft.checkIn && draft.checkOut && !validateHotelSearch(draft) ? `?${new URLSearchParams({checkIn:draft.checkIn,checkOut:draft.checkOut})}` : "";
 
-    // Render star rating as stars
-    const renderStars = (rating: number) => {
-        return "★".repeat(rating) + "☆".repeat(5 - rating);
-    };
+  const bookRoom = async (hotel: Hotel, room: RoomType) => {
+    if (bookingInFlight.current || dirty || loading || error || !applied.checkIn || !applied.checkOut) return;
+    bookingInFlight.current = true;
+    const search = applied;
+    const key = `${hotel.id}-${room.id}/${search.checkIn}/${search.checkOut}`;
+    const version = searchVersion.current;
+    const body = {hotelId:String(hotel.id),roomTypeId:String(room.id),checkIn:search.checkIn,checkOut:search.checkOut};
+    setPendingRoom(key); setBookingFailure("");
+    try {
+      if (!await recoverSession()) { router.push(loginUrl(hotelSearchPath(search))); return; }
+      const response = await bookingRequest("/api/hotels/book",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+      const data = await response.json();
+      if (!response.ok) throw new Error(response.status >= 500 ? "The result is unknown. Retry with the same dates or check My Hotel Bookings before starting a new booking." : data.error || "Booking failed.");
+      setReservation({id:data.reservation.id,summary:`${formatStayDate(search.checkIn)} to ${formatStayDate(search.checkOut)}`});
+      setBookedRoom(key);
+      await acknowledgeBooking("/api/hotels/book",body);
+      if (version === searchVersion.current) await loadHotels(search);
+    } catch (failure) {
+      const message = failure instanceof Error ? failure.message : "The result is unknown. Retry with the same dates or check My Hotel Bookings.";
+      setBookingFailure(message); toastError("Booking failed",{description:message});
+    } finally { bookingInFlight.current = false; setPendingRoom(""); }
+  };
 
-    // Calculate stay duration in nights
-    const calculateNights = (): number => {
-        return stayNights(checkIn, checkOut) ?? 0;
-    };
-
-    const nights = calculateNights();
-    const today = atMidnight(new Date());
-    const latestCheckIn = addDays(today, AVAILABILITY_HORIZON_DAYS).toISOString().slice(0, 10);
-    const latestCheckOut = addDays(today, AVAILABILITY_HORIZON_DAYS + 1).toISOString().slice(0, 10);
-
-    /**
-     * Book one room type for the selected dates.
-     *
-     * Every outcome is reported as a toast rather than an `alert()`: a booking
-     * failure is the most important message this page produces, and a native
-     * dialog blocks the tab, cannot be styled, and is dismissed by any stray
-     * keypress. The two date guards run first so an obviously invalid range is
-     * answered without a round trip and without a reservation id in the message.
-     */
-    const handleBookRoom = async (hotelId: number, roomTypeId: number) => {
-        if (!ensureLoggedIn()) return;
-
-        if (!checkIn || !checkOut) {
-            warning("Pick your dates first", {
-                description:
-                    "Choose a check-in and a check-out date to see this room's total and book it.",
-            });
-            return;
-        }
-        if ((stayNights(checkIn, checkOut) ?? 0) < 1) {
-            warning("Check-out must be after check-in", {
-                description: "A stay has to cover at least one night.",
-            });
-            return;
-        }
-
-        const bookingSearchVersion = searchVersion.current;
-        setBookingStatus((prev) => ({
-            ...prev,
-            [`${hotelId}-${roomTypeId}`]: "loading",
-        }));
-
-        // A pinned toast: this one is resolved by the outcome below rather than by
-        // a timer, so a slow booking still says what is happening.
-        const pending = info("Reserving your room…", { duration: 0 });
-
-        const token = getAccessToken();
-        try {
-            const res = await bookingRequest("/api/hotels/book", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify({
-                    hotelId: String(hotelId),
-                    roomTypeId: String(roomTypeId),
-                    checkIn,
-                    checkOut,
-                }),
-            });
-
-            if (!res.ok) {
-                const data = await res.json().catch(() => null);
-                // The API reports failures as `{ error }`; `message` is only read
-                // as a fallback for responses that predate that field.
-                toastError("Booking failed", {
-                    description:
-                        res.status >= 500 ? "The result is unknown. Retry with the same dates or check My Hotel Bookings before starting a new booking." : data?.error || data?.message || "Unknown error",
-                });
-                setBookingStatus((prev) => ({
-                    ...prev,
-                    [`${hotelId}-${roomTypeId}`]: "error",
-                }));
-                return;
-            }
-
-            const data = await res.json();
-
-            if (bookingSearchVersion === searchVersion.current) await loadHotels(city, checkIn, checkOut);
-
-            setLastReservation({ id: data.reservation.id, checkIn, checkOut });
-            success("Room booked", {
-                description: `Reservation #${data.reservation.id} is confirmed for ${nights} ${
-                    nights === 1 ? "night" : "nights"
-                }. Add it to an itinerary from the itineraries page.`,
-            });
-            setBookingStatus((prev) => ({
-                ...prev,
-                [`${hotelId}-${roomTypeId}`]: "success",
-            }));
-            await acknowledgeBooking("/api/hotels/book", { hotelId: String(hotelId), roomTypeId: String(roomTypeId), checkIn, checkOut });
-        } catch (err) {
-            toastError("Booking failed", {
-                description: "The result is unknown. Retry with the same dates or check My Hotel Bookings.",
-            });
-            setBookingStatus((prev) => ({
-                ...prev,
-                [`${hotelId}-${roomTypeId}`]: "error",
-            }));
-        } finally {
-            pending.dismiss();
-        }
-    };
-
-    // Render the room types of one hotel.
-    const renderRoomTypes = (hotel: Hotel) => {
-        if (!hotel.roomTypes || hotel.roomTypes.length === 0) {
-            return (
-                <p className="muted">
-                    No available rooms for this hotel.
-                </p>
-            );
-        }
-
-        const datesSelected = checkIn && checkOut; // Check if both dates are selected
-
-        return (
-            <div className="mt-4 space-y-3">
-                <h3 className="font-semibold text-lg text-gray-900 dark:text-zinc-100">Room options</h3>
-                {hotel.roomTypes.map((roomType) => {
-                    const bookingKey = `${hotel.id}-${roomType.id}`;
-                    const isBooking = bookingStatus[bookingKey] === "loading";
-                    const available = availabilityStay === `${checkIn}/${checkOut}` ? roomType.availableRooms : null;
-                    const isBooked = bookingStatus[bookingKey] === "success";
-
-                    return (
-                        <div
-                            key={roomType.id}
-                            className="p-3 rounded-lg border border-gray-300 bg-white dark:border-white/10 dark:bg-white/5"
-                        >
-                            <div className="hotel-room-summary flex justify-between gap-4">
-                                <div>
-                                    <p className="font-medium text-gray-900 dark:text-zinc-100">
-                                        {roomType.name}
-                                    </p>
-                                    {/* `amenities` is the descriptive field the
-                                        API actually returns; there is no
-                                        `description` on a room type. */}
-                                    {roomType.amenities && (
-                                        <p className="text-sm text-gray-600 dark:text-zinc-400">
-                                            {roomType.amenities}
-                                        </p>
-                                    )}
-                                    <p className="text-sm text-gray-700 dark:text-zinc-300">
-                                        <span className="font-medium">
-                                            Available:
-                                        </span>{" "}
-                                        {available == null ? "Select dates for availability" : `${available} ${available === 1 ? "room" : "rooms"} available for your stay`}
-                                    </p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="font-bold text-lg text-gray-900 dark:text-zinc-100">
-                                        ${roomType.pricePerNight.toFixed(2)} USD/night
-                                    </p>
-                                    {nights > 0 && (
-                                        <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">
-                                            {available == null ? "Estimated " : ""}
-                                            ${(available == null ? roomType.pricePerNight * nights : roomType.stayTotal ?? roomType.pricePerNight * nights).toFixed(2)} USD{" "}
-                                            total for {nights}{" "}
-                                            {nights === 1 ? "night" : "nights"}
-                                        </p>
-                                    )}
-                                    {datesSelected && ( // Only show button if dates are selected
-                                        <button
-                                            onClick={() =>
-                                                handleBookRoom(
-                                                    hotel.id,
-                                                    roomType.id
-                                                )
-                                            }
-                                            disabled={
-                                                (available ?? 0) <=
-                                                    0 ||
-                                                isBooking ||
-                                                isBooked
-                                            }
-                                            className={`mt-2 px-4 py-1 rounded text-white transition-colors ${
-                                                (available ?? 0) <=
-                                                0
-                                                    ? "bg-gray-400 cursor-not-allowed dark:bg-zinc-600 dark:text-zinc-300"
-                                                    : isBooked
-                                                    ? "bg-green-600 cursor-not-allowed dark:bg-emerald-500/20 dark:text-emerald-300 dark:ring-1 dark:ring-emerald-500/40"
-                                                    : "bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500"
-                                            }`}
-                                        >
-                                            {isBooking
-                                                ? "Booking..."
-                                                : available == null
-                                                ? "Search selected dates"
-                                                : isBooked
-                                                ? "Booked!"
-                                                : (available ?? 0) <=
-                                                  0
-                                                ? "Unavailable"
-                                                : "Book Now"}
-                                        </button>
-                                    )}
-                                </div>
-                            </div>
-                        </div>
-                    );
-                })}
-            </div>
-        );
-    };
-    
-    return (
-        <div className="page-shell card">
-            <BookingSteps current="reserve" />
-            <h1 className="text-3xl font-bold mb-6 heading">
-                Find your place to stay
-            </h1>
-            <p className="search-intro">Choose your dates to see availability for your entire stay, nightly rates and the total in USD.</p>
-
-            {/* Search form */}
-            <form
-                onSubmit={handleSubmit}
-                className="search-form mb-8 grid grid-cols-1 sm:grid-cols-3 gap-4"
-            >
-                <LocationCombobox label="Destination" kind="cities" value={city} onChange={setCity} placeholder="Which city?" />
-                <div className="flex flex-col">
-                    <label htmlFor="check-in" className="label mb-1">Check-in:</label>
-                    <input
-                        id="check-in"
-                        type="date"
-                        value={checkIn}
-                        max={latestCheckIn}
-                        onChange={(e) => setCheckIn(e.target.value)}
-                        required
-                        className="field"
-                    />
-                </div>
-                <div className="flex flex-col">
-                    <label htmlFor="check-out" className="label mb-1">
-                        Check-out:
-                    </label>
-                    <input
-                        id="check-out"
-                        type="date"
-                        min={checkIn || undefined}
-                        max={latestCheckOut}
-                        value={checkOut}
-                        onChange={(e) => setCheckOut(e.target.value)}
-                        required
-                        className="field"
-                    />
-                </div>
-                <details className="sm:col-span-3">
-                    <summary className="text-sm font-semibold cursor-pointer text-blue-600 dark:text-blue-300">Refine your stay</summary>
-                    <div className="grid sm:grid-cols-2 gap-4 mt-4">
-                        <div><label className="label" htmlFor="hotel-name-filter">Hotel name</label><input className="field" id="hotel-name-filter" value={filters.name} onChange={event => setFilters({ ...filters, name: event.target.value })} placeholder="Any hotel" /></div>
-                        <div><label className="label" htmlFor="hotel-rating-filter">Star rating</label><select className="field" id="hotel-rating-filter" value={filters.starRating} onChange={event => setFilters({ ...filters, starRating: event.target.value })}><option value="">Any rating</option>{[1,2,3,4,5].map(rating => <option key={rating} value={rating}>{rating} stars</option>)}</select></div>
-                        <div><label className="label" htmlFor="hotel-min-price">Minimum nightly rate (USD)</label><input className="field" id="hotel-min-price" type="number" min="0" step="0.01" value={filters.priceMin} onChange={event => setFilters({ ...filters, priceMin: event.target.value })} placeholder="No minimum" /></div>
-                        <div><label className="label" htmlFor="hotel-max-price">Maximum nightly rate (USD)</label><input className="field" id="hotel-max-price" type="number" min="0" step="0.01" value={filters.priceMax} onChange={event => setFilters({ ...filters, priceMax: event.target.value })} placeholder="No maximum" /></div>
-                    </div>
-                    <p className="text-xs muted mt-3">Shows properties with at least one room in your nightly budget. Review each room’s full stay total below.</p>
-                </details>
-                <div className="sm:col-span-3 flex gap-2">
-                    <button
-                        type="submit"
-                        disabled={loading}
-                        className="flex-1 py-3 bg-black text-white rounded hover:bg-gray-800 transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
-                    >
-                        {loading ? "Searching stays…" : "Search stays"}
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            setCity(""); setCheckIn(""); setCheckOut(""); setBookingStatus({}); setFilters(EMPTY_HOTEL_FILTERS);
-                            void loadHotels("", "", "", EMPTY_HOTEL_FILTERS);
-                        }}
-                        className="flex-1 py-3 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 dark:ring-1 dark:ring-white/10"
-                    >
-                        Show All
-                    </button>
-                </div>
-            </form>
-
-            {lastReservation && <div role="status" className="surface p-5 mb-6"><p className="font-semibold heading">Your stay is reserved</p><p className="muted text-sm mt-1">Reservation #{lastReservation.id} · {lastReservation.checkIn} to {lastReservation.checkOut}. Add this reservation to an itinerary to review and confirm your demo trip.</p><div className="flex flex-wrap gap-3 mt-4"><Link className="button-primary" href="/itineraries/new">Build an itinerary</Link><Link className="button-secondary" href={`/user/hotel-bookings/${lastReservation.id}`}>View reservation</Link></div></div>}
-            {/* Loading and error states */}
-            {loading && <p role="status" className="muted">Loading hotels...</p>}
-            {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
-
-            {/* Hotel results */}
-            {hotels.length > 0 && (
-                <div>
-                    <h2 className="text-2xl font-semibold mb-4 heading">
-                        {city || checkIn || checkOut
-                            ? "Search Results"
-                            : "All Hotels"}
-                    </h2>
-                    <ul className="space-y-6">
-                        {hotels.map((hotel) => (
-                            <li
-                                key={hotel.id}
-                                className="p-6 surface"
-                            >
-                                {hotel.images?.[0] && <img src={hotel.images[0]} alt={hotel.name} loading="lazy" className="w-full h-48 sm:h-64 object-cover rounded-xl mb-5" />}
-                                <div className="flex flex-wrap gap-4 justify-between items-start mb-4">
-                                    <div>
-                                        <h3 className="text-xl font-semibold text-gray-800 dark:text-zinc-100">
-                                            {hotel.name}
-                                        </h3>
-                                        <p className="text-gray-600 dark:text-zinc-400">
-                                            {hotel.address}
-                                        </p>
-                                        <p className="text-gray-600 dark:text-zinc-400">
-                                            {hotel.location}
-                                        </p>
-                                    </div>
-                                    <div className="flex flex-col items-end">
-                                        <div className="text-right mb-2">
-                                            <p className="text-gray-800 dark:text-zinc-200">
-                                                <span className="text-yellow-500 dark:text-yellow-400">
-                                                    {renderStars(
-                                                        hotel.starRating
-                                                    )}
-                                                </span>
-                                            </p>
-                                        </div>
-                                        <Link
-                                            href={`/hotels/${hotel.id}${checkIn && checkOut ? `?${new URLSearchParams({checkIn,checkOut})}` : ""}`}
-                                            className="px-4 py-2 bg-gray-200 text-gray-800 rounded hover:bg-gray-300 transition-colors text-sm dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
-                                        >
-                                            View Details
-                                        </Link>
-                                    </div>
-                                </div>
-                                {renderRoomTypes(hotel)}
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-            )}
-
-            {/* No results message */}
-            {!loading && !error && hotels.length === 0 && (
-                <p className="text-center muted py-4">
-                    No stays found. Try another city or different dates.
-                </p>
-            )}
-        </div>
-    );
+  return <div className="page-shell card">
+    <BookingSteps current="reserve" />
+    <h1 className="text-3xl font-bold mb-6 heading">Find your place to stay</h1>
+    <p className="search-intro">Compare rooms, nightly rates and stay totals in USD.</p>
+    <form onSubmit={event => {event.preventDefault();applySearch(draft);}} className="search-form mb-8">
+      <fieldset disabled={Boolean(pendingRoom)} className="hotel-search-fields">
+        <legend className="sr-only">Hotel search</legend>
+        <LocationCombobox label="Destination" kind="cities" value={draft.city} onChange={city=>setDraft({...draft,city})} placeholder="Any destination" required={false} disabled={Boolean(pendingRoom)} />
+        <div><label htmlFor="check-in" className="label">Check-in:</label><input id="check-in" type="date" className="field" value={draft.checkIn} min={earliest} max={latestCheckIn} required={Boolean(draft.checkOut)} onChange={event=>setDraft({...draft,checkIn:event.target.value})} /></div>
+        <div><label htmlFor="check-out" className="label">Check-out:</label><input id="check-out" type="date" className="field" value={draft.checkOut} min={hotelCheckoutMin(draft.checkIn, today)} max={latestCheckOut} required={Boolean(draft.checkIn)} onChange={event=>setDraft({...draft,checkOut:event.target.value})} /></div>
+        <details className="hotel-search-filters"><summary className="text-sm font-semibold cursor-pointer text-blue-600 dark:text-blue-300">Refine your stay</summary><div className="grid sm:grid-cols-2 gap-4 mt-4">
+          <div><label className="label" htmlFor="hotel-name-filter">Hotel name</label><input className="field" id="hotel-name-filter" value={draft.name} onChange={event=>setDraft({...draft,name:event.target.value})} placeholder="Any hotel" /></div>
+          <div><label className="label" htmlFor="hotel-rating-filter">Star rating</label><select className="field" id="hotel-rating-filter" value={draft.starRating} onChange={event=>setDraft({...draft,starRating:event.target.value})}><option value="">Any rating</option>{[1,2,3,4,5].map(rating=><option key={rating} value={rating}>{rating} stars</option>)}</select></div>
+          <div><label className="label" htmlFor="hotel-min-price">Minimum nightly rate (USD)</label><input className="field" id="hotel-min-price" type="number" min="0" step="0.01" value={draft.priceMin} onChange={event=>setDraft({...draft,priceMin:event.target.value})} placeholder="No minimum" /></div>
+          <div><label className="label" htmlFor="hotel-max-price">Maximum nightly rate (USD)</label><input className="field" id="hotel-max-price" type="number" min="0" step="0.01" value={draft.priceMax} onChange={event=>setDraft({...draft,priceMax:event.target.value})} placeholder="No maximum" /></div>
+        </div></details>
+        <div className="hotel-search-actions"><button type="submit" className="button-primary" disabled={loading}>{loading ? "Searching stays…" : "Search stays"}</button><button type="button" className="button-secondary" onClick={()=>applySearch(EMPTY_HOTEL_SEARCH)}>Show All</button>{hasFilters && <button type="button" className="text-sm underline muted" onClick={clearFilters}>Clear filters</button>}</div>
+      </fieldset>
+    </form>
+    {reservation && <ReservationSuccess kind="stay" reservationId={reservation.id} summary={reservation.summary} />}
+    {bookingFailure && <p role="alert" className="text-red-600 dark:text-red-400 mb-4">{bookingFailure}</p>}
+    {error && <div role="alert" className="surface p-5 mb-6"><p className="text-red-600 dark:text-red-400">{error}</p>{canRetry && <button type="button" className="button-secondary mt-3" disabled={Boolean(pendingRoom)} onClick={()=>{setDraft(lastRequest.current);void loadHotels(lastRequest.current);}}>Retry search</button>}</div>}
+    <section aria-label="Hotel results" aria-busy={loading}>
+      <div className="hotel-results-heading">
+        <div><h2 className="text-2xl font-semibold heading">{applied.checkIn ? "Available stays" : "Browse hotels"}</h2><p className="muted text-sm mt-1">{applied.city || "All destinations"}{applied.checkIn && ` · ${formatStayDate(applied.checkIn)} to ${formatStayDate(applied.checkOut)}`}{` · ${hotels.length} ${hotels.length === 1 ? "property" : "properties"}`}{applied.priceMin && ` · From $${applied.priceMin}/night`}{applied.priceMax && ` · Up to $${applied.priceMax}/night`}</p></div>
+        {dirty && !loading && <button type="button" className="button-secondary" disabled={Boolean(pendingRoom)} onClick={()=>applySearch(draft)}>Update results</button>}
+      </div>
+      {loading && <p role="status" className="muted mb-4">{hotels.length ? "Updating stays…" : "Loading hotels…"}</p>}
+      <ul className={`space-y-6${loading ? " opacity-60" : ""}`}>
+        {hotels.map(hotel=><li key={hotel.id} className="surface p-5 sm:p-6">
+          {hotel.images?.[0] && <img src={hotel.images[0]} alt={hotel.name} loading="lazy" className="w-full h-48 sm:h-64 object-cover rounded-xl mb-5" />}
+          <div className="flex flex-wrap gap-4 justify-between items-start"><div><h3 className="text-xl font-semibold heading">{hotel.name}</h3><p className="muted text-sm mt-1">{hotel.address}</p><p className="muted text-sm">{hotel.location}</p></div><span className="text-yellow-600 dark:text-yellow-400" aria-label={`${hotel.starRating} stars`}>{"★".repeat(hotel.starRating)}</span></div>
+          <div className="mt-4 space-y-3">{hotel.roomTypes.map(room=>{
+            const key = `${hotel.id}-${room.id}/${applied.checkIn}/${applied.checkOut}`;
+            const available = !dirty && !loading && !error && applied.checkIn ? room.availableRooms : null;
+            const pending = pendingRoom === key;
+            const booked = bookedRoom === key;
+            return <div className="hotel-room-option" key={room.id}>
+              <div className="min-w-0"><h4 className="font-semibold heading">{room.name}</h4>{room.amenities && <p className="muted text-sm mt-1">{room.amenities}</p>}{available != null && <p className="text-sm mt-2">{available} {available === 1 ? "room" : "rooms"} available for your stay</p>}</div>
+              <div className="hotel-room-price"><p className="font-bold text-lg heading">${room.pricePerNight.toFixed(2)} <span className="text-sm font-normal muted">USD / night</span></p>{nights > 0 && <p className="muted text-sm">{available == null ? "Estimated " : ""}${(available == null ? room.pricePerNight*nights : room.stayTotal ?? room.pricePerNight*nights).toFixed(2)} USD · {nights} {nights === 1 ? "night" : "nights"}</p>}
+              <button type="button" className="button-primary mt-3" disabled={loading || Boolean(pendingRoom) || booked || (available != null && available < 1)} onClick={()=>{if (!draft.checkIn || !draft.checkOut) chooseDates();else if (available == null) applySearch(draft);else void bookRoom(hotel,room);}}>{pending ? "Reserving…" : booked ? "Booked" : !draft.checkIn || !draft.checkOut ? "Choose dates" : available == null ? "Check availability" : available < 1 ? "Unavailable" : "Book Now"}</button></div>
+            </div>;
+          })}{hotel.roomTypes.length === 0 && <p className="muted text-sm">No room types available.</p>}</div>
+          <Link className="inline-block text-sm underline mt-4" href={`/hotels/${hotel.id}${detailQuery}`}>View Details</Link>
+        </li>)}
+      </ul>
+      {!loading && !error && hotels.length === 0 && <div className="surface p-8 text-center"><h3 className="text-xl font-semibold heading">No stays match your search</h3><div className="flex flex-wrap justify-center gap-3 mt-5">{hasFilters && <button type="button" className="button-primary" onClick={clearFilters}>Clear filters</button>}{draft.checkIn && <button type="button" className="button-secondary" onClick={chooseDates}>Change dates</button>}<button type="button" className="button-secondary" onClick={()=>applySearch(EMPTY_HOTEL_SEARCH)}>Browse all hotels</button></div></div>}
+    </section>
+  </div>;
 }

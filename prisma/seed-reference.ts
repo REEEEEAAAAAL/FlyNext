@@ -41,6 +41,7 @@
 import { randomBytes } from "crypto";
 import path from "path";
 import { Prisma, PrismaClient } from "@prisma/client";
+import { materializeRoomHorizons } from "../lib/hotel-inventory";
 import { availabilityHorizon } from "../lib/api/validation";
 import { hashPassword } from "../lib/auth";
 import {
@@ -333,50 +334,19 @@ async function ensureHotels(
 		await tx.roomType.createMany({ data: roomTypes });
 	}
 
-	/*
-	 * Materialise the booking calendar for every reference room type.
-	 *
-	 * A booking claims one `RoomAvailabilityRecord` per night and is refused with
-	 * "The selected date is not supported for booking." when a night has no row,
-	 * so a room type seeded without its calendar is listed on the hotel page but
-	 * cannot actually be booked. Only missing nights are inserted, which keeps this
-	 * compatible with the script's "never deletes, only creates" contract and makes
-	 * a second run a no-op.
-	 */
+	// Fill missing nights under the booking lock, accounting for active stays.
 	const seededRoomTypes = await tx.roomType.findMany({
 		where: { hotelId: { in: hotelIds } },
-		select: { id: true, currentAvailability: true },
+		select: { id: true },
+		orderBy: { id: "asc" },
 	});
 	const { days } = availabilityHorizon();
-	const knownNights = new Set(
-		(
-			await tx.roomAvailabilityRecord.findMany({
-				where: { roomTypeId: { in: seededRoomTypes.map((row) => row.id) } },
-				select: { roomTypeId: true, date: true },
-			})
-		).map((row) => `${row.roomTypeId}:${row.date.getTime()}`)
-	);
-	const nights: Prisma.RoomAvailabilityRecordCreateManyInput[] =
-		seededRoomTypes.flatMap((roomType) =>
-			days
-				.filter((day) => !knownNights.has(`${roomType.id}:${day.getTime()}`))
-				.map((day) => ({
-					roomTypeId: roomType.id,
-					date: day,
-					availability: roomType.currentAvailability,
-				}))
-		);
-	if (nights.length > 0) {
-		await tx.roomAvailabilityRecord.createMany({
-			data: nights,
-			skipDuplicates: true,
-		});
-	}
+	const { count: availabilityNightsCreated } = await materializeRoomHorizons(tx, seededRoomTypes.map(room => room.id), days);
 
 	return {
 		hotelsCreated: missing.length,
 		roomTypesCreated: roomTypes.length,
-		availabilityNightsCreated: nights.length,
+		availabilityNightsCreated,
 	};
 }
 

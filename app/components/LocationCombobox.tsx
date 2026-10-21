@@ -5,14 +5,15 @@ import { sessionFetch } from "@/app/lib/session";
 
 type Location = { id: number | string; code?: string; name: string; country?: string; city?: string | { name: string } };
 
-export default function LocationCombobox({ label, kind, value, onChange, placeholder }: {
-  label: string; kind: "airports" | "cities"; value: string; onChange: (value: string) => void; placeholder: string;
+export default function LocationCombobox({ label, kind, value, onChange, placeholder, required = true, disabled = false }: {
+  label: string; kind: "airports" | "cities"; value: string; onChange: (value: string) => void; placeholder: string; required?: boolean; disabled?: boolean;
 }) {
   const id = useId();
   const [options, setOptions] = useState<Location[]>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(-1);
   const [loading, setLoading] = useState(false);
+  const [requested, setRequested] = useState(false);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const generation = useRef(0);
@@ -26,19 +27,19 @@ export default function LocationCombobox({ label, kind, value, onChange, placeho
   useEffect(() => {
     const version = ++generation.current;
     const controller = new AbortController();
-    setOptions([]); setActive(-1); setError(""); setLoading(false);
+    setOptions([]); setActive(-1); setError(""); setLoading(false); setRequested(false);
     if (query.trim().length < 2) return () => controller.abort();
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
         const response = await sessionFetch(`/api/locations/${kind}?q=${encodeURIComponent(query)}`, { signal: controller.signal });
-        if (!response.ok) throw new Error("Suggestions unavailable. You can still enter a location.");
+        if (!response.ok) throw new Error("Suggestions unavailable.");
         const data = await response.json();
         if (version === generation.current && !controller.signal.aborted) setOptions(data[kind] ?? []);
       } catch (failure) {
         if (!controller.signal.aborted && version === generation.current) setError(failure instanceof Error ? failure.message : "Suggestions unavailable.");
       } finally {
-        if (version === generation.current && !controller.signal.aborted) setLoading(false);
+        if (version === generation.current && !controller.signal.aborted) { setLoading(false); setRequested(true); }
       }
     }, 250);
     return () => { clearTimeout(timer); controller.abort(); };
@@ -50,7 +51,7 @@ export default function LocationCombobox({ label, kind, value, onChange, placeho
   };
   return <div className="relative" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
     <label className="label" htmlFor={id}>{label}</label>
-    <input id={id} className="field" role="combobox" autoComplete="off" required value={value} placeholder={placeholder}
+    <input id={id} className="field" role="combobox" autoComplete="off" required={required} disabled={disabled} value={value} placeholder={placeholder}
       aria-autocomplete="list" aria-expanded={open && options.length > 0} aria-controls={`${id}-options`}
       aria-activedescendant={open && active >= 0 ? `${id}-option-${active}` : undefined} aria-describedby={`${id}-status`}
       onChange={(event) => { generation.current += 1; onChange(event.target.value); setQuery(event.target.value); setOptions([]); setActive(-1); setOpen(true); }}
@@ -68,6 +69,6 @@ export default function LocationCombobox({ label, kind, value, onChange, placeho
         {option.code ? `${option.code} · ` : ""}{option.name}{option.country ? ` (${option.country})` : ""}
       </li>)}
     </ul>
-    <span id={`${id}-status`} className="text-xs muted" role="status">{loading ? "Finding locations…" : error || (open && query.length >= 2 && !options.length ? "Enter a location or airport code." : "")}</span>
+    <span id={`${id}-status`} className="combobox-status text-xs muted" role="status">{loading ? "Finding locations…" : error || (open && requested && query.length >= 2 && !options.length ? "No suggestions" : "")}</span>
   </div>;
 }

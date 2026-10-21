@@ -2,11 +2,17 @@
 
 [English](README.md) | [简体中文](README.zh-CN.md)
 
-[Live demo](https://flynext-puce.vercel.app)
+[Live demo](https://flynext-puce.vercel.app) | [Source code](https://github.com/REEEEEAAAAAL/FlyNext)
 
 FlyNext is a full-stack travel booking application built as a software engineering portfolio project. It brings flight reservations, hotel stays, itineraries, account management, and hotel-owner workflows into one responsive application. The interface is in English and supports light and dark themes.
 
 The project demonstrates how browser workflows connect to authenticated APIs, transactional PostgreSQL writes, an interchangeable flight provider, and media and receipt services. Flight and hotel records are synthetic demo data. Checkout is a DEMO flow: it does not authorize or transfer money, and the application does not collect real payment-card or passport details.
+
+## Try the demo
+
+Try Toronto to New York on a future date, or choose a hotel stay. Reservations can be combined in an itinerary for DEMO checkout and a downloadable PDF receipt.
+
+Hotel check-in is supported from the current UTC date through 60 days ahead, inclusive; check-out may be the following day. Missing nightly records are derived from room capacity minus active stays and created transactionally when needed. The window rolls automatically across years and leap days, without scheduled seeds or inventory cleanup.
 
 ## Contents
 

@@ -16,6 +16,15 @@ npm run build
 
 `npm test` is database-independent and does not read local environment files. Type checking, Next.js builds and E2E builds must run sequentially when sharing `.next`. `npm audit --audit-level=high` checks current advisories without upgrading dependencies. Never disable safety, runtime-error, type or lint checks to hide a failure.
 
+The hotel calendar regression uses simulated dates across 2026–2028, leap day and DST in several time zones. Run the focused database cases through the guarded runner:
+
+```sh
+npm run test:db:verify
+npm run test:integration -- tests/hotel-inventory-rolling.test.ts tests/booking.oversell.test.ts tests/booking.stage4.test.ts tests/hotels.room-availability.test.ts
+```
+
+These cases exercise missing-night reads, concurrent materialization and booking, repeated cancellation, and reference backfill with active reservations. Reference backfill preserves stored nights and uses the same room lock and occupancy calculation as booking. Historical non-UTC dates still require explicit review; schema equality does not establish data equivalence.
+
 ## Development data
 
 Review and apply the eight application migrations with `npm run prisma:migrate` only after confirming the development target. `npm run seed:reference` adds cities, airports, reference hotels, room types and nightly availability, and can create or update the configured demo owner. Review `SEED_OWNER_EMAIL` and `SEED_OWNER_PASSWORD` before running it. It writes data and is not a routine check.

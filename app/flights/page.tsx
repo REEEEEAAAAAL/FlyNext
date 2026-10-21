@@ -7,8 +7,9 @@ import { getAccessToken, sessionFetch, recoverSession } from "@/app/lib/session"
 
 import LocationCombobox from "@/app/components/LocationCombobox";
 import BookingSteps from "@/app/components/BookingSteps";
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import ReservationSuccess from "@/app/components/ReservationSuccess";
+import { flightSearchPath, readFlightSearch, type FlightSearch } from "@/app/lib/flight-search";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearAccessToken } from "@/app/lib/session";
 import { useFeedback } from "@/app/context/FeedbackContext";
@@ -213,12 +214,8 @@ export default function FlightSearchPage() {
     const [deviceTimeZone, setDeviceTimeZone] = useState("");
     useEffect(() => {
         setDeviceTimeZone(Intl.DateTimeFormat().resolvedOptions().timeZone);
-        const saved = new URLSearchParams(window.location.search);
-        setOrigin(saved.get("origin") ?? ""); setDestination(saved.get("destination") ?? "");
-        setDate(saved.get("date") ?? ""); setReturnDate(saved.get("returnDate") ?? "");
-        if (saved.get("tripType") === "round-trip") setTripType("round-trip");
     }, []);
-    const signInForSelection = () => loginUrl(`/flights?${new URLSearchParams({ origin, destination, date, returnDate, tripType })}`);
+    const signInForSelection = () => loginUrl(flightSearchPath({ ...searchDetails, tripType }));
 
 
 
@@ -235,17 +232,12 @@ export default function FlightSearchPage() {
     const [searched, setSearched] = useState(false);
     const [error, setError] = useState("");
 
-    /*
-     * Booking outcomes are shown as toasts, and the toast is the only place a
-     * booking result is reported: it survives the next click and does not block
-     * the tab the way an `alert()` does, so a failure cannot be missed. The
-     * page-level `bookingError` state survives only for the form's own inline
-     * validation, which has to point at the field that needs fixing.
-     */
+    // Keep booking outcomes visible after the request completes.
     const [booking, setBooking] = useState(false);
-    const [bookingMessage, setBookingMessage] = useState("");
+    const [reservation, setReservation] = useState<{id:number;summary:string} | null>(null);
+    const retrySearch = useRef<FlightSearch | null>(null);
     const [bookingError, setBookingError] = useState("");
-    const { success, error: toastError, warning } = useFeedback();
+    const { error: toastError, warning } = useFeedback();
 
     /**
      * True from the click that starts a booking until its request has settled.
@@ -364,7 +356,7 @@ export default function FlightSearchPage() {
     };
 
     // Function to perform flight search.
-    const performFlightSearch = async (
+    const performFlightSearch = useCallback(async (
         origin: string,
         destination: string,
         date: string,
@@ -413,17 +405,17 @@ export default function FlightSearchPage() {
         );
 
         return processedGroups;
-    };
+    }, []);
 
-    const handleSearch = async (e: React.FormEvent<HTMLFormElement>) => {
-        e.preventDefault();
+    const runSearch = useCallback(async (selection: FlightSearch) => {
+        const { origin, destination, date, returnDate, tripType } = selection;
         const version = ++searchVersion.current;
         searchController.current?.abort();
         const controller = new AbortController();
         searchController.current = controller;
         setLoading(true);
         setError("");
-        setBookingMessage("");
+        retrySearch.current = null;
         setBookingError("");
         setOutboundFlightGroups([]);
         setReturnFlightGroups([]);
@@ -446,6 +438,7 @@ export default function FlightSearchPage() {
                     "The return date must be after the outbound date: a return flight cannot leave before the outbound arrives."
                 );
             }
+            retrySearch.current = selection;
 
             /*
              * A round trip is two independent searches, so they run together. The
@@ -467,14 +460,34 @@ export default function FlightSearchPage() {
             if (isRoundTrip) {
                 setReturnFlightGroups(inbound);
             }
-        } catch (err: any) {
+        } catch (err) {
             if (version !== searchVersion.current || controller.signal.aborted) return;
-            const failure = err.message || "The flight search failed.";
+            const failure = err instanceof Error ? err.message : "The flight search failed.";
             setError(failure);
             toastError("Flight search failed", { description: failure });
         } finally {
             if (version === searchVersion.current && !controller.signal.aborted) setLoading(false);
         }
+    }, [performFlightSearch, toastError]);
+
+    useEffect(() => {
+        const restore = () => {
+            const search = readFlightSearch(new URLSearchParams(window.location.search));
+            setOrigin(search.origin); setDestination(search.destination); setDate(search.date); setReturnDate(search.returnDate); setTripType(search.tripType);
+            if (search.origin && search.destination && search.date && (search.tripType === "one-way" || search.returnDate)) void runSearch(search);
+            else { searchVersion.current++; searchController.current?.abort(); setLoading(false); setSearched(false); setError(""); }
+        };
+        restore();
+        window.addEventListener("popstate",restore);
+        return () => window.removeEventListener("popstate",restore);
+    }, [runSearch]);
+
+    const handleSearch = (event: React.FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const search = {origin,destination,date,returnDate,tripType};
+        const path = flightSearchPath(search);
+        if (path !== window.location.pathname + window.location.search) window.history.pushState(null,"",path);
+        void runSearch(search);
     };
 
     // Helper function to fetch user info from the backend.
@@ -516,7 +529,6 @@ export default function FlightSearchPage() {
         bookingInFlight.current = true;
         setBooking(true);
         setBookingError("");
-        setBookingMessage("");
 
         try {
             if (!(await ensureLoggedIn()) || flights.length === 0) return;
@@ -564,11 +576,8 @@ export default function FlightSearchPage() {
                 return;
             }
 
-            const message = `Reservation #${data.reservationId} is confirmed.`;
-            setBookingMessage(message);
-            success("Flight booked", {
-                description: `${message} Add it to an itinerary from the itineraries page.`,
-            });
+            const outboundEnd = flights[flights.length - returnLegCount - 1];
+            setReservation({id:data.reservationId,summary:`${returnLegCount ? "Round trip" : "One-way"} · ${flights[0]?.origin?.code ?? "Departure"} to ${outboundEnd?.destination?.code ?? "Arrival"}`});
             await acknowledgeBooking("/api/flights/book", { email: user.email, firstName: user.firstName, lastName: user.lastName, flightIds: flights.map(f => f.id), returnLegCount });
         } catch (error: any) {
             const failure = "The result is unknown. Retry with the same selection or check My Flight Bookings.";
@@ -666,6 +675,7 @@ export default function FlightSearchPage() {
                         </li>;
                     })}
                 </ul> : <p role="status" className="surface p-6 muted">No {direction} flights found. Try different airports or a different {outbound ? "departure" : "return"} date.</p>}
+                {!groups.length && <button type="button" className="button-secondary mt-3" onClick={()=>document.getElementById("outbound-date")?.focus()}>Change search</button>}
             </section>
         );
     };
@@ -698,13 +708,14 @@ export default function FlightSearchPage() {
 
             <form onSubmit={handleSearch} className="search-form mb-8 grid sm:grid-cols-2 gap-4">
                 {/* Outbound Flight Inputs */}
-                <LocationCombobox label="From" kind="airports" value={origin} onChange={setOrigin} placeholder="City or airport code" />
-                <LocationCombobox label="To" kind="airports" value={destination} onChange={setDestination} placeholder="Where are you going?" />
+                <LocationCombobox label="From" kind="airports" value={origin} onChange={setOrigin} placeholder="City or airport code" disabled={booking} />
+                <LocationCombobox label="To" kind="airports" value={destination} onChange={setDestination} placeholder="Where are you going?" disabled={booking} />
                 <div>
                     <label htmlFor="outbound-date" className="label">Departure date:</label>
                     <input
                         id="outbound-date"
                         type="date"
+                        disabled={booking}
                         value={date}
                         min={localDay(new Date())}
                         onChange={(e) => setDate(e.target.value)}
@@ -718,6 +729,7 @@ export default function FlightSearchPage() {
                         <input
                             id="return-date"
                             type="date"
+                            disabled={booking}
                             value={returnDate}
                             /*
                              * A return cannot leave on the day the outbound departs:
@@ -734,22 +746,15 @@ export default function FlightSearchPage() {
                     </div>
                 )}
                 <p className="muted text-sm">Demo flights use a synthetic passenger identifier. No passport details are needed.</p>
-                <button type="submit" disabled={loading} className="px-6 py-3 bg-black text-white rounded hover:bg-gray-800 transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white">
+                <button type="submit" disabled={loading || booking} className="px-6 py-3 bg-black text-white rounded hover:bg-gray-800 transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white">
                     {loading ? "Searching flights…" : "Search flights"}
                 </button>
             </form>
 
             {loading && <p role="status" className="muted">Loading flights...</p>}
-            {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
+            {error && <div role="alert" className="surface p-5 mb-6"><p className="text-red-600 dark:text-red-400">{error}</p>{retrySearch.current && <button type="button" className="button-secondary mt-3" onClick={()=>{if (retrySearch.current) void runSearch(retrySearch.current);}}>Retry search</button>}</div>}
             {/* Keep booking outcomes available after their toasts close. */}
-            {bookingMessage && (
-                <p
-                    role="status"
-                    className="text-green-700 dark:text-green-400"
-                >
-                    {bookingMessage} <Link className="underline" href="/itineraries/new">Build your itinerary</Link>
-                </p>
-            )}
+            {reservation && <ReservationSuccess kind="flight" reservationId={reservation.id} summary={reservation.summary} />}
             {bookingError && (
                 <p role="alert" className="text-red-600 dark:text-red-400">
                     {bookingError}
