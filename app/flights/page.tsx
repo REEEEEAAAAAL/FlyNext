@@ -706,7 +706,7 @@ export default function FlightSearchPage() {
                 </button>
             </div>
 
-            <form onSubmit={handleSearch} className="search-form mb-8 grid sm:grid-cols-2 gap-4">
+            <form onSubmit={handleSearch} className="flight-search-form search-form mb-8 grid sm:grid-cols-2 gap-4">
                 {/* Outbound Flight Inputs */}
                 <LocationCombobox label="From" kind="airports" value={origin} onChange={setOrigin} placeholder="City or airport code" disabled={booking} />
                 <LocationCombobox label="To" kind="airports" value={destination} onChange={setDestination} placeholder="Where are you going?" disabled={booking} />
@@ -723,13 +723,12 @@ export default function FlightSearchPage() {
                         className="field"
                     />
                 </div>
-                {tripType === "round-trip" && (
-                    <div>
+                    <div className={`sm:col-start-2 sm:row-start-2 ${tripType === "one-way" ? "invisible" : ""}`} aria-hidden={tripType === "one-way" ? true : undefined}>
                         <label htmlFor="return-date" className="label">Return date:</label>
                         <input
                             id="return-date"
                             type="date"
-                            disabled={booking}
+                            disabled={booking || tripType === "one-way"}
                             value={returnDate}
                             /*
                              * A return cannot leave on the day the outbound departs:
@@ -740,15 +739,14 @@ export default function FlightSearchPage() {
                              */
                             min={earliestReturnDay(date)}
                             onChange={(e) => setReturnDate(e.target.value)}
-                            required
+                            required={tripType === "round-trip"}
                             className="field"
                         />
                     </div>
-                )}
-                <p className="muted text-sm">Demo flights use a synthetic passenger identifier. No passport details are needed.</p>
-                <button type="submit" disabled={loading || booking} className="px-6 py-3 bg-black text-white rounded hover:bg-gray-800 transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white">
+                <button type="submit" disabled={loading || booking} className={`min-h-12 self-end px-6 py-3 bg-black text-white rounded hover:bg-gray-800 transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white sm:col-start-2 ${tripType === "one-way" ? "sm:row-start-2" : "sm:row-start-3"}`}>
                     {loading ? "Searching flights…" : "Search flights"}
                 </button>
+                <p className="muted text-sm sm:col-start-1 sm:row-start-3">Demo flights use a synthetic passenger identifier. No passport details are needed.</p>
             </form>
 
             {loading && <p role="status" className="muted">Loading flights...</p>}

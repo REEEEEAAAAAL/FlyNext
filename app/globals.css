@@ -570,14 +570,22 @@ h1 { color: var(--ink); }
 .app-main .bg-black:hover { background-color: #174bbd; }
 .app-main button { min-height: 42px; border-radius: .65rem; }
 .app-main input:not([type=checkbox]):not([type=radio]):not([type=file]), .app-main select { min-width: 0; max-width: 100%; }
+.app-main input[type=date] { display: block; box-sizing: border-box; width: 100%; min-inline-size: 0; }
+.app-main input[type=date]::-webkit-date-and-time-value { min-width: 0; text-align: left; }
+@supports (-webkit-touch-callout: none) {
+ .app-main input[type=date] { padding-inline: 0; }
+ .app-main input[type=date]::-webkit-date-and-time-value { text-indent: .9rem; }
+}
+.flight-search-form > div, .hotel-search-fields > div { min-width: 0; }
 .app-main .flex > * { min-width: 0; }
 .app-main .table-shell { overflow-x: auto; }
 .app-main table { min-width: 640px; }
 .site-header { background: var(--surface); border-bottom: 1px solid var(--line); position: relative; z-index: 40; }
-.nav-shell { max-width: 1248px; margin: auto; padding: 0 24px; min-height: 84px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
+.nav-shell { max-width: calc(var(--page-max-width) + 48px); margin: auto; padding: 0 24px; min-height: 84px; display: flex; align-items: center; justify-content: space-between; gap: 24px; }
 .brand { display: flex; align-items: center; gap: 7px; font-weight: 750; font-size: 23px; letter-spacing: -.06em; color: var(--ink); white-space: nowrap; }
 .brand svg { width: 32px; height: 32px; color: var(--primary); }
 .desktop-nav, .nav-actions, .desktop-account { display: flex; align-items: center; gap: 12px; }
+.nav-actions { gap: 8px; }
 .nav-link { display: flex; align-items: center; gap: 8px; padding: 10px 16px; border-radius: .6rem; font-size: 14px; font-weight: 550; color: var(--text-secondary); }
 .nav-link-icon { width: 17px; height: 17px; flex: 0 0 auto; }
 .nav-link:hover, .nav-link[aria-current=page] { color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, transparent); }
@@ -585,8 +593,13 @@ h1 { color: var(--ink); }
 .account-dropdown { position: absolute; top: calc(100% + 12px); right: 0; width: 240px; padding: 8px; }
 .account-dropdown-divider { display: block; width: 100%; height: 0; margin: 8px 0; border: 0; border-top: 1.5px solid var(--line); }
 .mobile-trigger, .mobile-navigation { display: none; }
-.site-footer { max-width: 1200px; margin: auto; padding: 28px 24px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; font-size: 12px; color: var(--text-muted); }
+.site-footer { max-width: 1200px; margin: auto; padding: 28px 24px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; font-size: 12px; color: var(--text-muted); }
 .site-footer > a:first-child { font-size: 18px; font-weight: 700; color: var(--ink); }
+.site-footer-links { display: inline-flex; align-items: center; gap: 12px; }
+.site-footer-links > a { display: inline-flex; align-items: center; min-height: 44px; }
+.site-footer-divider { width: 1px; height: 18px; background: var(--line); }
+.site-footer-github { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border-radius: .4rem; }
+.site-footer-github:hover { color: var(--ink); }
 .skip-link { position: fixed; left: 12px; top: -100px; z-index: 150; padding: 12px 20px; background: var(--surface); color: var(--ink); border: 2px solid var(--primary); }
 .skip-link:focus { top: 12px; }
 .home-page { max-width: var(--page-max-width); margin: auto; }
@@ -648,6 +661,9 @@ h1 { color: var(--ink); }
  .reservation-success-actions a { flex: 1; }
 }
 .calendar-cell { min-height: 70px; padding: 4px; font-size: 12px; width: 100%; }
+.availability-filters { display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 16px; }
+.availability-filters form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; min-width: 0; }
+.availability-filters form > div { flex: 1 1 170px; min-width: 0; }
 @media (max-width: 900px) {
  .desktop-nav, .desktop-account { display: none; }
  .mobile-trigger { display: inline-flex; padding: 10px; }
@@ -659,6 +675,8 @@ h1 { color: var(--ink); }
  .journey-art { min-height: 360px; }
 }
 @media (max-width: 640px) {
+ .app-main input[type=date] { font-size: 16px; }
+ .availability-filters form { width: 100%; }
  .app-main { padding: 24px 16px 40px; }
  .page-shell { padding: 24px 18px; }
  .profile-card { padding: 0; }
@@ -716,6 +734,9 @@ h1 { color: var(--ink); }
 .segment-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--text-muted); margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--line); }
 .flight-results-grid { display: grid; gap: 24px; align-items: start; }
 .flight-search-page { container: flight-search / inline-size; }
+@media (min-width: 640px) {
+ .flight-search-form { grid-template-rows: auto auto minmax(3.1rem, auto); }
+}
 .flight-results-panel { min-width: 0; border: 1px solid var(--line); border-radius: 1rem; background: color-mix(in srgb, var(--primary) 2%, var(--surface)); }
 .flight-results-heading { padding: 20px; }
 .flight-results-title { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }

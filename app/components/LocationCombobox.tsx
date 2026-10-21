@@ -65,7 +65,7 @@ export default function LocationCombobox({ label, kind, value, onChange, placeho
       }} />
     <ul ref={list} id={`${id}-options`} role="listbox" aria-label={`${label} suggestions`} hidden={!open || !options.length} className="combobox-options floating">
       {options.map((option, index) => <li id={`${id}-option-${index}`} key={option.id} role="option" aria-selected={active === index}
-        onPointerDown={(event) => event.preventDefault()} onClick={() => choose(option)} onPointerMove={() => setActive(index)}>
+        onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)} onPointerMove={(event) => { if (event.pointerType === "mouse") setActive(index); }}>
         {option.code ? `${option.code} · ` : ""}{option.name}{option.country ? ` (${option.country})` : ""}
       </li>)}
     </ul>

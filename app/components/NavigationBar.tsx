@@ -28,7 +28,7 @@ export default function NavigationBar() {
     <div className="nav-shell">
       <Link href="/" className="brand" title="FlyNext home"><svg viewBox="0 0 32 32" aria-hidden="true"><path d="m5 17 22-11-8 22-4-9-10-2Z" fill="none" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" /><path d="m15 19 12-13" stroke="currentColor" strokeWidth="2" /></svg>FlyNext</Link>
       <nav aria-label="Primary" className="desktop-nav">{links(primary)}</nav>
-      <div className="nav-actions"><ThemeToggle className="nav-theme" /><div className="desktop-account">{signedIn && <NotificationBadge />}</div>
+      <div className="nav-actions"><ThemeToggle className="nav-theme" />{signedIn && <div className="desktop-account"><NotificationBadge /></div>}
         <div className="desktop-account relative" ref={menu} onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
           <button ref={trigger} className="button-secondary" aria-expanded={open} aria-controls="account-links" onClick={() => setOpen(!open)}>{signedIn ? "My account" : "Get started"} <span aria-hidden="true">⌄</span></button>
           {open && <nav id="account-links" aria-label="Account" className="account-dropdown floating">{signedIn ? <>{links(account.slice(0, 1))}<hr className="account-dropdown-divider" />{links(account.slice(1))}<hr className="account-dropdown-divider" />{links([["/hotels/owner", "Host workspace"]])}<hr className="account-dropdown-divider" />{links([["/auth/logout", "Log out"]])}</> : links([["/auth/login", "Log in"], ["/auth/register", "Create account"]])}</nav>}

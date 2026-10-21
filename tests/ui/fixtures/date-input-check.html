@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>FlyNext date input comparison</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px 16px; font: 16px/1.5 system-ui, sans-serif; color: #25364b; background: #f4f7fb; }
+  main { max-width: 430px; margin: auto; }
+  h1 { font-size: 24px; line-height: 1.2; color: #132c46; }
+  h2 { font-size: 18px; }
+  section { margin-block: 24px; }
+  .controls { padding: 16px; border: 1px solid #dce5ee; border-radius: 16px; background: #f7f9fd; }
+  label { display: block; margin-block: 12px 4px; font-size: 14px; font-weight: 600; }
+  input { display: block; width: 100%; min-width: 0; min-height: 48px; padding: .7rem .9rem; border: 1px solid #d1d5db; border-radius: 12px; color: inherit; background: white; font: inherit; }
+  .zero input[type=date] { padding-inline: 0; }
+  .appearance input[type=date] { appearance: none; }
+  .candidate input[type=date] { padding-inline: 0; }
+  .candidate input[type=date]::-webkit-date-and-time-value { text-align: left; text-indent: .9rem; }
+  output { display: block; margin-top: 12px; font: 12px/1.6 ui-monospace, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+  #browser { font-size: 12px; overflow-wrap: anywhere; }
+</style>
+<main>
+  <h1>Date input comparison</h1>
+  <p>Compare the borders before and after selecting a date. Every group uses the same parent width and control styles; only the named variable changes.</p>
+  <p id="browser"></p>
+  <section class="baseline"><h2>A. Original padding</h2><div class="controls"></div><output></output></section>
+  <section class="zero"><h2>B. Date horizontal padding: 0</h2><div class="controls"></div><output></output></section>
+  <section class="appearance"><h2>C. Original padding, appearance: none</h2><div class="controls"></div><output></output></section>
+  <section class="candidate"><h2>D. Candidate: zero padding, inset date text</h2><div class="controls"></div><output></output></section>
+  <p>Local test fixture. No booking or account requests are made on this page.</p>
+</main>
+<script>
+  const selected = new Date();
+  selected.setUTCDate(selected.getUTCDate() + 2);
+  const probe = document.createElement('input');
+  probe.type = 'date';
+  document.querySelector('#browser').textContent = navigator.userAgent + '\niOS CSS feature: ' + CSS.supports('-webkit-touch-callout', 'none') + '\nNative date type: ' + probe.type;
+  for (const section of document.querySelectorAll('section')) {
+    const controls = section.querySelector('.controls');
+    for (const [name, type, value] of [['Text', 'text', 'Example text'], ['Date initially empty', 'date', ''], ['Date initially selected', 'date', selected.toISOString().slice(0, 10)]]) {
+      const label = document.createElement('label');
+      label.textContent = name;
+      const input = document.createElement('input');
+      input.id = section.className + '-' + type + '-' + controls.children.length;
+      input.type = type;
+      input.value = value;
+      label.htmlFor = input.id;
+      controls.append(label, input);
+    }
+    const measure = () => {
+      const textWidth = controls.querySelector('input').getBoundingClientRect().width;
+      section.querySelector('output').textContent = [...controls.querySelectorAll('input')].map(input => {
+        const bounds = input.getBoundingClientRect();
+        const style = getComputedStyle(input);
+        return `${input.type} ${input.value ? 'filled' : 'empty'}: ${bounds.width.toFixed(1)}px; delta vs text ${(bounds.width - textWidth).toFixed(1)}px; padding ${style.paddingLeft}/${style.paddingRight}; ${style.boxSizing}; appearance ${style.appearance}`;
+      }).join('\n');
+    };
+    controls.addEventListener('input', measure);
+    new ResizeObserver(measure).observe(controls);
+    measure();
+  }
+</script>
+</html>

@@ -793,13 +793,12 @@ export default function EditRoomTypePage() {
 
             {/* Availability Records Section */}
             <div className="mt-8">
-                <div className="calendar-controls flex justify-between items-center mb-4">
+                <div className="availability-filters mb-4">
                     <h2 className="text-2xl font-bold heading">
                         Availability Records
                     </h2>
                     <form
                         onSubmit={handleAvailabilityFilter}
-                        className="flex flex-wrap items-center gap-4"
                     >
                         <div>
                             <label htmlFor="field-5" className="label mb-1">
@@ -809,7 +808,7 @@ export default function EditRoomTypePage() {
                                 type="date"
                                 value={checkIn}
                                 onChange={(e) => setCheckIn(e.target.value)}
-                                className="border p-2 rounded dark:border-white/15 dark:bg-zinc-800 dark:text-zinc-100"
+                                className="field"
                             />
                         </div>
                         <div>
@@ -820,7 +819,7 @@ export default function EditRoomTypePage() {
                                 type="date"
                                 value={checkOut}
                                 onChange={(e) => setCheckOut(e.target.value)}
-                                className="border p-2 rounded dark:border-white/15 dark:bg-zinc-800 dark:text-zinc-100"
+                                className="field"
                             />
                         </div>
                         <button
