@@ -66,7 +66,7 @@ export default function RootLayout({
             <NavigationBar />
             {/* Resolve lazy route content inside a client component during hydration replay. */}
             <main id="main-content" className="app-main" tabIndex={-1}><SessionProvider>{children}</SessionProvider></main>
-            <footer className="site-footer"><Link href="/">FlyNext</Link><span>A portfolio travel demo. No real payments.</span><Link href="/hotels/owner">Host workspace</Link></footer>
+            <footer className="site-footer"><Link href="/">FlyNext</Link><span>A portfolio travel demo. No real payments.</span><span className="flex flex-wrap gap-4"><Link href="/hotels/owner">Host workspace</Link><a href="https://github.com/REEEEEAAAAAL/FlyNext">Source code</a></span></footer>
           </FeedbackProvider>
         </ThemeProvider>
         <Analytics />

@@ -1,18 +1,16 @@
-# FlyNext
+<h1 align="center">FlyNext</h1>
 
-[English](README.md) | [简体中文](README.zh-CN.md)
+<p align="center">
+  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
+</p>
 
-[Live demo](https://flynext-puce.vercel.app) | [Source code](https://github.com/REEEEEAAAAAL/FlyNext)
+<p align="center">
+  <a href="https://flynext-puce.vercel.app">Live demo</a> | <a href="https://github.com/REEEEEAAAAAL/FlyNext">Source code</a>
+</p>
 
 FlyNext is a full-stack travel booking application built as a software engineering portfolio project. It brings flight reservations, hotel stays, itineraries, account management, and hotel-owner workflows into one responsive application. The interface is in English and supports light and dark themes.
 
 The project demonstrates how browser workflows connect to authenticated APIs, transactional PostgreSQL writes, an interchangeable flight provider, and media and receipt services. Flight and hotel records are synthetic demo data. Checkout is a DEMO flow: it does not authorize or transfer money, and the application does not collect real payment-card or passport details.
-
-## Try the demo
-
-Try Toronto to New York on a future date, or choose a hotel stay. Reservations can be combined in an itinerary for DEMO checkout and a downloadable PDF receipt.
-
-Hotel check-in is supported from the current UTC date through 60 days ahead, inclusive; check-out may be the following day. Missing nightly records are derived from room capacity minus active stays and created transactionally when needed. The window rolls automatically across years and leap days, without scheduled seeds or inventory cleanup.
 
 ## Contents
 
@@ -77,7 +75,7 @@ The `app/` layer renders pages and owns HTTP entry points. Shared API concerns l
 
 ## Engineering highlights and design decisions
 
-- **Claim inventory atomically.** Hotel availability is stored per room type and UTC calendar night. A unique `(roomTypeId, date)` constraint prevents split inventory rows. Booking decrements all requested nights with a conditional database update inside a transaction and checks the affected row count; it does not rely on a read-then-write availability check. Cancellation uses a guarded state transition so inventory is restored once.
+- **Claim inventory atomically.** Hotels support a rolling 60-day booking window, safely filling missing nightly inventory from room capacity and active reservations without scheduled seeds. Availability is stored per room type and UTC calendar night. A unique `(roomTypeId, date)` constraint prevents split inventory rows. Booking decrements all requested nights with a conditional database update inside a transaction and checks the affected row count; it does not rely on a read-then-write availability check. Cancellation uses a guarded state transition so inventory is restored once.
 - **Keep reservation changes consistent.** Database transactions group related reservation, inventory, itinerary, and checkout writes. Flight operations cross a provider boundary, so a failed local write triggers a compensating provider cancellation; unreconciled outcomes are surfaced for operator attention rather than reported as a successful local booking.
 - **Make retries safe.** Write endpoints that support idempotent booking or checkout require an `Idempotency-Key`. The key is scoped to the operation and request fingerprint; replaying the same request returns the stored outcome, while reusing a key for different input is a conflict.
 - **Protect sessions and guest data.** Access tokens are kept in browser memory. Refresh credentials use an HttpOnly cookie and rotate through server-side refresh-session records. Owner-only guest reservations are returned through ownership-checked endpoints; public hotel and room responses do not expose guest bookings. Sensitive responses are not shared through caches.
