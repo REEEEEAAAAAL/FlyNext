@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { readFileSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 
 test("visitor entry points remain usable across viewport sizes and themes", async ({ page }) => {
@@ -80,6 +80,7 @@ test("hotel list restores its session and preserves search filters after booking
     await expect(button).toBeEnabled();
     const response = page.waitForResponse(value => new URL(value.url()).pathname === "/api/hotels/book" && value.request().method() === "POST", {timeout:60_000});
     await button.click();
+    await expect(page.getByRole("button",{name:"Reserving…",exact:true})).toBeDisabled();
     release();
     const booked = await response;
     expect(booked.status()).toBe(201);
@@ -88,6 +89,12 @@ test("hotel list restores its session and preserves search filters after booking
     reservationId = body.reservation.id;
     expect((await refreshed).status()).toBe(200);
     await expect(page.getByText("Your stay is reserved",{exact:true})).toBeVisible();
+    await page.setViewportSize({width:390,height:844});
+    const confirmation = page.getByRole("status",{name:"Reservation confirmed"});
+    await confirmation.evaluate(element=>element.scrollIntoView({block:"start"}));
+    expect(await confirmation.evaluate(element=>element.getBoundingClientRect().top)).toBeGreaterThanOrEqual(31);
+    mkdirSync("test-results/ux-review",{recursive:true});
+    await page.screenshot({path:"test-results/ux-review/hotel-success-mobile.png"});
     await expect(page).not.toHaveURL(/auth\/login/);
   } finally {
     release();

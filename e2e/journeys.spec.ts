@@ -182,6 +182,7 @@ for (const viewport of [{name:"desktop",width:1440,height:1000},{name:"tablet",w
           await expect(from).toHaveValue("YYZ");
         }
         if (path.includes("room-types")) await expect(page.getByRole("button",{name:"Reserve room",exact:true})).toBeEnabled();
+        if (path === "/flights") await page.screenshot({path:`docs/screenshots/ui-flights-${viewport.width}-${theme}.png`,fullPage:true});
         expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
         const violations=(await new AxeBuilder({page}).withTags(["wcag2a","wcag2aa","wcag21a","wcag21aa"]).analyze()).violations;
         expect(violations.map(row=>({id:row.id,impact:row.impact,nodes:row.nodes.map(node=>node.target)}))).toEqual([]);

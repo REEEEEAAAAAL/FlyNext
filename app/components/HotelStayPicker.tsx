@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import ReservationSuccess from "@/app/components/ReservationSuccess";
 import { useRouter } from "next/navigation";
 import { sessionFetch, recoverSession } from "@/app/lib/session";
 import { bookingRequest, acknowledgeBooking } from "@/app/lib/booking-request";
 import { loginUrl } from "@/app/lib/return-path";
-import { stayNights } from "@/app/lib/booking-display";
+import { formatStayDate, stayNights } from "@/app/lib/booking-display";
 import { addDays, atMidnight, AVAILABILITY_HORIZON_DAYS, AVAILABILITY_HORIZON_ERROR, isStayWithinAvailabilityHorizon } from "@/lib/api/validation";
 
 interface Room { id: number; name: string; pricePerNight: number; amenities?: string | null }
@@ -100,7 +101,7 @@ export default function HotelStayPicker({ hotelId, rooms, roomDetail = false }: 
   </form>
   {loading && <p role="status">Loading availability...</p>}
   {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
-  {reservation && <p role="status">Room booked for {reservation.checkIn} to {reservation.checkOut}. <Link className="underline" href={`/user/hotel-bookings/${reservation.id}`}>View reservation #{reservation.id}</Link>. <Link className="underline" href="/itineraries/new">Build an itinerary</Link></p>}
+  {reservation && <ReservationSuccess kind="stay" reservationId={reservation.id} summary={`${formatStayDate(reservation.checkIn)} to ${formatStayDate(reservation.checkOut)}`} />}
   {rooms.map(room => {
    const count = available(room.id);
    const rate = Math.round((room.pricePerNight + Number.EPSILON) * 100) / 100;
