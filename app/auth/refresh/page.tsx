@@ -32,8 +32,8 @@ export default function RefreshPage() {
   }, [router]);
 
   return (
-    <div className="text-center mt-8">
-      <p>Refreshing token...</p>
+    <div className="page-shell page-shell--message card text-center">
+      <p role="status">Restoring your session…</p>
     </div>
   );
 }

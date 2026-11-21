@@ -10,6 +10,8 @@ import { requireAuth } from "@/lib/api/auth";
 import { withRoute } from "@/lib/api/handler";
 import { parseRouteId } from "@/lib/api/validation";
 import { prisma } from "@/lib/prisma";
+import { bookingStatusColors } from "@/lib/booking-status-colors";
+import { airportLabel, describeRoute } from "@/lib/flight-route-display";
 
 const colors = {
 	ink: rgb(0.08, 0.16, 0.25),
@@ -107,6 +109,47 @@ function drawRightText(
 	page.drawText(fittedText, { x: rightX - width, y, font, size, color });
 }
 
+/** Draw a PDF-native arrow because the built-in font arrow glyph is not rendered consistently. */
+function drawRouteArrow(page: PDFPage, x: number, y: number, size: number, color: ReturnType<typeof rgb>): number {
+	const width = size;
+	const tipX = x + width;
+	const centerY = y + size * 0.42;
+	const headLength = size * 0.32;
+	const halfHeight = size * 0.24;
+	const thickness = size * 0.06;
+	page.drawLine({ start: { x, y: centerY }, end: { x: tipX, y: centerY }, thickness, color });
+	page.drawLine({ start: { x: tipX - headLength, y: centerY + halfHeight }, end: { x: tipX, y: centerY }, thickness, color });
+	page.drawLine({ start: { x: tipX - headLength, y: centerY - halfHeight }, end: { x: tipX, y: centerY }, thickness, color });
+	return width;
+}
+
+function drawRoute(
+	page: PDFPage,
+	from: string,
+	to: string,
+	x: number,
+	y: number,
+	font: PDFFont,
+	size: number,
+	color: ReturnType<typeof rgb>,
+	maxWidth: number,
+	via: string[] = [],
+): void {
+	// Keep a fixed gap on both sides so different glyph shapes do not shift the arrow visually.
+	const gap = 10;
+	const fromText = fitText(from, font, size, maxWidth * 0.45);
+	const fromWidth = font.widthOfTextAtSize(fromText, size);
+	page.drawText(fromText, { x, y, font, size, color });
+	const arrowX = x + fromWidth + gap;
+	const arrowWidth = drawRouteArrow(page, arrowX, y, size, color);
+	const toX = arrowX + arrowWidth + gap;
+	const viaText = via.length > 0 ? `(via ${via.join(", ")})` : "";
+	const toText = fitText(to, font, size, Math.max(1, maxWidth - (toX - x) - font.widthOfTextAtSize(viaText, size)));
+	page.drawText(toText, { x: toX, y, font, size, color });
+	const viaX = toX + font.widthOfTextAtSize(toText, size) + gap;
+	if (viaText) drawText(page, viaText, viaX, y, font, size, color, Math.max(1, maxWidth - (viaX - x)));
+}
+
 function drawField(
 	page: PDFPage,
 	label: string,
@@ -119,6 +162,24 @@ function drawField(
 ): void {
 	drawText(page, label.toUpperCase(), x, y, bold, 7.5, colors.muted, width);
 	drawText(page, value, x, y - 16, regular, 10, colors.ink, width);
+}
+
+/** Place a printable status badge against a field's left edge or a section's right edge. */
+function drawStatusBadge(
+	page: PDFPage, status: string, x: number, baseline: number, font: PDFFont, align: "left" | "right",
+): void {
+	const hex = bookingStatusColors(status).light;
+	const channel = (offset: number) => parseInt(hex.slice(offset, offset + 2), 16) / 255;
+	const ink = rgb(channel(1), channel(3), channel(5));
+	const label = fitText(status, font, 8, 120);
+	const width = font.widthOfTextAtSize(label, 8) + 14;
+	const left = align === "right" ? x - width : x;
+	const end = width - 7;
+	page.drawSvgPath(`M7 0 H${end} a7 7 0 0 1 0 14 H7 a7 7 0 0 1 0 -14 Z`, {
+		x: left, y: baseline + 10, color: ink, opacity: 0.09,
+		borderColor: ink, borderOpacity: 0.36, borderWidth: 0.65,
+	});
+	page.drawText(label, { x: left + 7, y: baseline, size: 8, font, color: ink });
 }
 
 function drawPageHeader(
@@ -156,6 +217,10 @@ function location(record: unknown, prefix: "origin" | "destination"): string {
 	const country = readString(record, `${prefix}Country`);
 	const name = readString(record, `${prefix}Name`);
 	return [city, country, name].filter((part): part is string => part !== null).join(", ");
+}
+
+function withoutAirportCode(label: string): string {
+	return label.replace(/\s+\([A-Z]{3}\)$/, "");
 }
 
 function directionSegments(
@@ -204,7 +269,8 @@ export const GET = withRoute(async (request) => {
 	page.drawRectangle({ x: 48, y: 585, width: 516, height: 68, color: colors.accentPale });
 	drawField(page, "Receipt reference", `FN-${String(itinerary.id).padStart(6, "0")}`, 64, 630, regular, bold, 145);
 	drawField(page, "Booking date", formatCalendarDate(itinerary.bookingDate), 236, 630, regular, bold, 145);
-	drawField(page, "Booking status", itinerary.status, 410, 630, regular, bold, 138);
+	drawText(page, "BOOKING STATUS", 410, 630, bold, 7.5, colors.muted, 138);
+	drawStatusBadge(page, itinerary.status, 410, 612, bold, "left");
 
 	let y = 558;
 	const startContinuationPage = (): void => {
@@ -227,7 +293,7 @@ export const GET = withRoute(async (request) => {
 	if (itinerary.flight !== null) {
 		ensureSpace(42);
 		drawText(page, "FLIGHT RESERVATION", 48, y - 4, bold, 9, colors.ink, 250);
-		drawRightText(page, itinerary.flight.status, 564, y - 4, bold, 9, colors.accent, 180);
+		drawStatusBadge(page, itinerary.flight.status, 564, y - 4, bold, "right");
 		drawText(page, `Reference ${itinerary.flight.afsBookingId.toUpperCase()}`, 48, y - 19, regular, 8, colors.ink, 516);
 		drawRightText(page, `Total ${money(itinerary.flight.price)}`, 564, y - 34, regular, 8, colors.muted, 180);
 		y -= 40;
@@ -241,14 +307,31 @@ export const GET = withRoute(async (request) => {
 
 		for (const direction of directions) {
 			ensureSpace(22);
-			drawText(page, direction.label, 48, y - 12, bold, 10, colors.ink, 200);
+			const route = describeRoute(null, null, direction.legs.map(segment => ({
+				from: readString(segment, "from"), originCity: readString(segment, "originCity"),
+				to: readString(segment, "to"), destinationCity: readString(segment, "destinationCity"),
+			})));
+			const directionLabel = direction.label;
+			const labelWidth = bold.widthOfTextAtSize(directionLabel, 10);
+			const slashGap = 8;
+			const labelX = 48;
+			const routeY = y - 12;
+			drawText(page, directionLabel, labelX, routeY, bold, 10, colors.ink, 100);
+			const slashX = labelX + labelWidth + slashGap;
+			drawText(page, "/", slashX, routeY, bold, 10, colors.ink, 20);
+			const routeX = slashX + bold.widthOfTextAtSize("/", 10) + slashGap;
+			const routeText = [
+				`${withoutAirportCode(route.from)} to ${withoutAirportCode(route.to)}`,
+				route.stops.length > 0 ? `(via ${route.stops.map(withoutAirportCode).join(", ")})` : null,
+			].filter((part): part is string => part !== null).join(" ");
+			drawText(page, routeText, routeX, routeY, bold, 10, colors.ink, 564 - routeX);
 			y -= 23;
 			for (const [index, segment] of direction.legs.entries()) {
 				ensureSpace(102);
 				const top = y;
 				page.drawRectangle({ x: 48, y: top - 91, width: 516, height: 91, color: colors.panel, borderColor: colors.line, borderWidth: 1 });
-				const from = readString(segment, "from") ?? "Origin unavailable";
-				const to = readString(segment, "to") ?? "Destination unavailable";
+				const from = airportLabel(readString(segment, "from"), readString(segment, "originCity"));
+				const to = airportLabel(readString(segment, "to"), readString(segment, "destinationCity"));
 				const fromPlace = location(segment, "origin");
 				const toPlace = location(segment, "destination");
 				const flightNumber = readString(segment, "flightNumber");
@@ -262,13 +345,14 @@ export const GET = withRoute(async (request) => {
 				const status = readString(segment, "status");
 				const segmentPrice = readNumber(segment, "price");
 				const currency = readString(segment, "currency") ?? "USD";
-				const meta = [carrier || "Carrier details unavailable", durationLabel, status, segmentPrice === null ? null : money(segmentPrice, currency)]
+				const meta = [carrier || "Carrier details unavailable", durationLabel, segmentPrice === null ? null : money(segmentPrice, currency)]
 					.filter((part): part is string => part !== null)
 					.join("  |  ");
 
 				drawText(page, `${direction.label.toUpperCase()}  /  LEG ${index + 1} OF ${direction.legs.length}`, 64, top - 15, bold, 7.5, colors.accent, 300);
-			drawText(page, `${from}  >  ${to}`, 64, top - 34, bold, 13, colors.ink, 470);
-			drawText(page, `${fromPlace || from}  >  ${toPlace || to}`, 64, top - 49, regular, 8, colors.muted, 470);
+				if (status) drawStatusBadge(page, status, 552, top - 17, bold, "right");
+				drawRoute(page, from, to, 64, top - 34, bold, 13, colors.ink, 470);
+				drawRoute(page, fromPlace || from, toPlace || to, 64, top - 49, regular, 8, colors.muted, 470);
 			drawText(page, meta, 64, top - 64, regular, 8, colors.ink, 470);
 			drawText(page, `Depart: ${formatDate(readString(segment, "departDate"))}`, 64, top - 80, regular, 8, colors.muted, 230);
 			drawText(page, `Arrive: ${formatDate(readString(segment, "arriveDate"))}`, 316, top - 80, regular, 8, colors.muted, 232);
@@ -288,7 +372,8 @@ export const GET = withRoute(async (request) => {
 		const hotel = itinerary.hotel;
 		const nights = Math.max(0, Math.round((hotel.checkOut.getTime() - hotel.checkIn.getTime()) / 86_400_000));
 		page.drawRectangle({ x: 48, y: y - 82, width: 516, height: 82, color: colors.panel, borderColor: colors.line, borderWidth: 1 });
-		drawText(page, hotel.hotel?.name ?? "Hotel details unavailable", 64, y - 19, bold, 12, colors.ink, 470);
+		drawText(page, hotel.hotel?.name ?? "Hotel details unavailable", 64, y - 19, bold, 12, colors.ink, 330);
+		drawStatusBadge(page, hotel.status, 548, y - 19, bold, "right");
 		drawText(page, `${hotel.roomType?.name ?? "Room details unavailable"}  |  ${hotel.hotel?.location ?? "Location unavailable"}`, 64, y - 37, regular, 8.5, colors.muted, 470);
 		drawText(page, `Check-in: ${formatCalendarDate(hotel.checkIn)}  |  Check-out: ${formatCalendarDate(hotel.checkOut)}  |  ${nights} ${nights === 1 ? "night" : "nights"}`, 64, y - 57, regular, 8.5, colors.ink, 470);
 		drawText(page, `Hotel reservation total: ${money(hotel.price)}`, 64, y - 73, bold, 8.5, colors.accent, 470);

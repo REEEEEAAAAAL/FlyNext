@@ -13,6 +13,46 @@ import { addDays, atMidnight, AVAILABILITY_HORIZON_DAYS, AVAILABILITY_HORIZON_ER
 interface Room { id: number; name: string; pricePerNight: number; amenities?: string | null }
 interface Night { date: string; availability: number }
 
+const weekdays = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const calendarMonth = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
+
+/** Group UTC inventory dates by calendar month. A missing record has no quoted count. */
+function NightlyCalendar({ nights, loading }: { nights: Night[]; loading: boolean }) {
+ const months = new Map<string, Map<number, number>>();
+ for (const night of nights) {
+  const month = night.date.slice(0, 7);
+  const dates = months.get(month) ?? new Map<number, number>();
+  dates.set(Number(night.date.slice(8, 10)), night.availability);
+  months.set(month, dates);
+ }
+ return <details className="nightly-calendar">
+  <summary>Nightly availability calendar</summary>
+  {months.size ? <>
+   <p className="text-sm muted my-3">Rooms available each night. A dash means availability is unlisted.</p>
+   <div className="nightly-months">{Array.from(months).sort(([a], [b]) => a.localeCompare(b)).map(([month, dates]) => {
+    const first = new Date(month + "-01T00:00:00Z");
+    const offset = first.getUTCDay();
+    const days = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0)).getUTCDate();
+    return <table key={month}><caption>{calendarMonth.format(first)}</caption>
+     <thead><tr>{weekdays.map(day => <th key={day} scope="col">{day}</th>)}</tr></thead>
+     <tbody>{Array.from({ length: Math.ceil((offset + days) / 7) }, (_, week) => <tr key={week}>
+      {weekdays.map((weekday, column) => {
+       const day = week * 7 + column - offset + 1;
+       if (day < 1 || day > days) return <td key={weekday} />;
+       const count = dates.get(day);
+       const iso = month + "-" + String(day).padStart(2, "0");
+       return <td key={weekday} data-available={count === undefined ? "unknown" : count === 0 ? "none" : "yes"}>
+        <time dateTime={iso}>{day}</time>
+        <span>{count ?? "—"}<span className="sr-only">{count === undefined ? " unlisted" : " rooms available"}</span></span>
+       </td>;
+      })}
+     </tr>)}</tbody>
+    </table>;
+   })}</div>
+  </> : <p className="mt-3 text-sm muted">{loading ? "Loading availability…" : "No nightly inventory listed."}</p>}
+ </details>;
+}
+
 export default function HotelStayPicker({ hotelId, rooms, roomDetail = false }: { hotelId: string; rooms: Room[]; roomDetail?: boolean }) {
  const router = useRouter();
  const [checkIn, setCheckIn] = useState("");
@@ -88,7 +128,7 @@ export default function HotelStayPicker({ hotelId, rooms, roomDetail = false }: 
  };
  return <section id="stay-dates" className="mt-8 space-y-4" aria-label="Stay dates and availability">
   <h2 className="text-2xl font-semibold heading">Choose dates & availability</h2>
-  <form className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end" onSubmit={event => {
+  <form className="stay-date-form grid grid-cols-1 sm:grid-cols-3 gap-3 items-end" onSubmit={event => {
    event.preventDefault();
    if (nights < 1) { setError("Check-out must be after check-in."); return; }
    if (!isStayWithinAvailabilityHorizon(new Date(`${checkIn}T00:00:00.000Z`), new Date(`${checkOut}T00:00:00.000Z`))) { setError(AVAILABILITY_HORIZON_ERROR); return; }
@@ -110,7 +150,7 @@ export default function HotelStayPicker({ hotelId, rooms, roomDetail = false }: 
     {room.amenities && <p className="muted text-sm">{room.amenities}</p>}
     <p>${rate.toFixed(2)} USD / night{count !== null ? ` · ${nights} ${nights === 1 ? "night" : "nights"} · $${(rate*nights).toFixed(2)} USD · ${count > 0 ? `${count} ${count === 1 ? "room" : "rooms"} available` : "Sold out for these dates"}` : " · Select supported dates and check availability"}</p>
     <button className="button-primary" disabled={count === null || count < 1 || booking} onClick={() => void book(room.id)}>{booking ? "Reserving..." : "Reserve room"}</button>
-    <details><summary className="cursor-pointer">Nightly availability calendar</summary><div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">{(calendars[room.id] ?? []).map(row => <p className="text-sm" key={row.date}>{row.date.slice(0,10)}: {row.availability} rooms</p>)}</div></details>
+    <NightlyCalendar nights={calendars[room.id] ?? []} loading={loading} />
    </div>;
   })}
   {roomDetail && <Link className="button-secondary" href={`/hotels/${hotelId}${query}`}>Back to hotel</Link>}

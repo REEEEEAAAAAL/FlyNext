@@ -4,7 +4,7 @@ FlyNext is a travel booking portfolio application built with Next.js. The interf
 
 ## Tech stack
 
-- Node.js 24, Next.js 15.5.28 App Router, React 19.0.9, TypeScript 5 in strict mode, and Tailwind CSS 4.
+- Node.js 24, Next.js 15.5.29 App Router, React 19.0.9, TypeScript 5 in strict mode, and Tailwind CSS 4.
 - PostgreSQL and Prisma 6.3.1.
 - Vitest for unit and integration tests; Playwright for browser end-to-end tests.
 - The lockfile is authoritative for dependency versions. Do not upgrade or replace dependencies unless explicitly requested.
@@ -63,6 +63,7 @@ FlyNext is a travel booking portfolio application built with Next.js. The interf
 ## Core business constraints
 
 - Use UTC calendar dates for hotel check-in and check-out. Preserve compatibility with legacy data and inventory concurrency safeguards.
+- Keep airport codes in search parameters and reservation data. Use `lib/flight-route-display.ts` for passenger-facing city, airport and transfer labels, and group transfers within each direction.
 - Preserve transactions and idempotency keys for reservation writes. Cancellation must restore inventory consistently, without duplicate decrements or increments.
 - Public hotel and room-type responses must not include guest booking records.
 - Verify the current user's identity and resource ownership when accessing hotel-owner data.

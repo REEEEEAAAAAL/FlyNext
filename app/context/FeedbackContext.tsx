@@ -24,11 +24,8 @@
  *
  * ## Position
  *
- * Toasts are top-centre, which is the one region no page puts content in: the
- * navigation bar is a fixed strip along the top, and the page bodies all start
- * below it. A bottom-right stack would sit on top of the "Cancel"/"Book Now"
- * buttons this app puts at the bottom of its cards, and a bottom-centre stack
- * would cover the pagination and totals rows.
+ * Toasts sit below the header and align with the content edge. Only the cards
+ * receive pointer events so the space around them stays interactive.
  *
  * ## Lifetime
  *
@@ -335,15 +332,13 @@ const TOAST_STYLES: Record<
 	ToastVariant,
 	{
 		accent: string;
-		panel: string;
 		title: string;
 		icon: ReactNode;
 	}
 > = {
 	success: {
 		accent: "bg-emerald-500",
-		panel:
-			"border-emerald-200 bg-white dark:border-emerald-500/30 dark:bg-zinc-800",
+
 		title: "text-emerald-800 dark:text-emerald-300",
 		icon: (
 			<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -357,7 +352,7 @@ const TOAST_STYLES: Record<
 	},
 	error: {
 		accent: "bg-red-500",
-		panel: "border-red-200 bg-white dark:border-red-500/30 dark:bg-zinc-800",
+
 		title: "text-red-800 dark:text-red-300",
 		icon: (
 			<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -371,8 +366,7 @@ const TOAST_STYLES: Record<
 	},
 	warning: {
 		accent: "bg-amber-500",
-		panel:
-			"border-amber-200 bg-white dark:border-amber-500/30 dark:bg-zinc-800",
+
 		title: "text-amber-800 dark:text-amber-300",
 		icon: (
 			<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -386,7 +380,7 @@ const TOAST_STYLES: Record<
 	},
 	info: {
 		accent: "bg-blue-500",
-		panel: "border-blue-200 bg-white dark:border-blue-500/30 dark:bg-zinc-800",
+
 		title: "text-blue-800 dark:text-blue-300",
 		icon: (
 			<svg viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
@@ -424,7 +418,7 @@ function ToastViewport({
 
 	return (
 		<div
-			className="pointer-events-none fixed inset-x-0 top-4 z-[100] flex flex-col items-center gap-2 px-4"
+			className="toast-viewport"
 			role="region"
 			aria-label="Notifications"
 		>
@@ -449,9 +443,7 @@ function ToastCard({
 
 	return (
 		<div
-			className={`pointer-events-auto w-full max-w-md overflow-hidden rounded-xl border shadow-lg ${
-				style.panel
-			} ${toast.leaving ? "animate-toast-out" : "animate-toast-in"}`}
+			className={`toast-card floating ${toast.leaving ? "animate-toast-out" : "animate-toast-in"}`}
 			role={toast.variant === "error" ? "alert" : "status"}
 		>
 			<div className="flex items-start gap-3 p-3.5">
@@ -470,7 +462,7 @@ function ToastCard({
 					type="button"
 					onClick={() => onDismiss(toast.id)}
 					aria-label="Dismiss notification"
-					className="-mr-1 -mt-1 shrink-0 rounded-lg p-1.5 text-gray-400 transition-colors hover:bg-black/5 hover:text-gray-700 dark:text-zinc-500 dark:hover:bg-white/10 dark:hover:text-zinc-200"
+					className="toast-dismiss"
 				>
 					<svg
 						viewBox="0 0 20 20"
@@ -581,9 +573,9 @@ function ConfirmDialog({
 				aria-modal="true"
 				aria-labelledby="confirm-dialog-title"
                 aria-describedby={options.description ? "confirm-dialog-description" : undefined}
-				className="w-full max-w-md overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl animate-panel-in dark:border-white/10 dark:bg-zinc-800"
+				className="confirm-panel floating animate-panel-in"
 			>
-				<div className="flex items-start gap-4 p-6">
+				<div className="confirm-body flex items-start gap-4">
 					<span
 						className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${
 							danger
@@ -629,19 +621,19 @@ function ConfirmDialog({
 					</div>
 				</div>
 
-				<div className="flex flex-col-reverse gap-2 border-t border-gray-200 bg-gray-50 p-4 sm:flex-row sm:justify-end dark:border-white/10 dark:bg-black/20">
+				<div className="confirm-actions flex flex-col gap-2 sm:flex-row sm:justify-end">
 					<button
 						type="button"
 						ref={cancelRef}
 						onClick={onCancel}
-						className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-800 transition-colors hover:bg-gray-100 dark:border-white/15 dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
+						className="button-secondary"
 					>
 						{options.cancelLabel ?? "Go back"}
 					</button>
 					<button
 						type="button"
 						onClick={onConfirm}
-						className={`rounded-lg px-4 py-2 text-sm font-semibold text-white transition-colors ${
+						className={`min-h-11 rounded-xl px-4 py-2 text-sm font-semibold text-white transition-colors ${
 							danger
 								? "bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-500"
 								: "bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500"

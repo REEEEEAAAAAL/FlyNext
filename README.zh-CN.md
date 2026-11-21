@@ -1,7 +1,7 @@
 <h1 align="center">FlyNext</h1>
 
 <p align="center">
-  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
+  <a href="README.md">English</a> | 简体中文
 </p>
 
 <p align="center">
@@ -32,13 +32,13 @@ FlyNext 是一个全栈旅行预订应用，作为软件工程作品集项目展
 
 | 领域 | 能力 |
 | --- | --- |
-| 航班 | 搜索单程和往返行程、预订和查询机票、查看中转航段、取消预订。 |
-| 酒店 | 搜索房源、查看房型和按日期的库存、创建和编辑房源、预订或取消住宿。 |
+| 航班 | 搜索单程和往返航班，按票价或总耗时排序，直接查看转机机场，并管理机票预订。有城市资料时，路线以「城市名（机场代码）」显示，例如 Toronto (YYZ)。 |
+| 酒店 | 按目的地、入住与退房日期、星级和每晚房价筛选酒店，在月历中查看每晚可订房数，并预订或取消住宿。 |
 | 行程 | 将预订组合进行程、查看合计金额并管理其中的预订。每个行程最多关联一个航班预订和一个酒店预订。 |
-| DEMO 结账 | 将行程确认为订单、保留确认快照并下载 PDF 收据；有相应数据时展示去程、返程和中转航段。不处理真实支付。 |
+| DEMO 结账 | 核对行程总额并确认模拟预订。PDF 收据保留确认快照，并在资料可用时列出去程和返程各自的转机地点与航段。不处理真实支付。 |
 | 账户 | 注册、登录、管理个人资料和头像，并维护可刷新的会话。 |
 | 通知 | 查看账户通知及未读数量。 |
-| 酒店业主 | 管理自有房源、房型、逐夜库存，并查看预订和可用量摘要。受保护操作会核验所有权。 |
+| 酒店业主 | 管理自有房源、预览上传照片、编辑房型和逐夜库存，并查看预订和可用量摘要。受保护操作会核验所有权。 |
 
 响应式工作流覆盖桌面、平板和移动端布局，并支持浅色与深色主题。浏览器覆盖包括旅客与房主操作、键盘和焦点行为、无障碍扫描以及大型合成酒店列表。
 
@@ -46,7 +46,7 @@ FlyNext 是一个全栈旅行预订应用，作为软件工程作品集项目展
 
 | 技术 | 用途 |
 | --- | --- |
-| Node.js 24、Next.js 15.5.28 App Router 和 React 19.0.9 | 应用运行时、服务端渲染的 Web 应用及 API Route Handlers。 |
+| Node.js 24、Next.js 15.5.29 App Router 和 React 19.0.9 | 应用运行时、服务端渲染的 Web 应用及 API Route Handlers。 |
 | TypeScript 5 | 严格的应用、API 和测试契约。 |
 | Tailwind CSS 4 | 响应式样式及浅色/深色主题。 |
 | PostgreSQL 和 Prisma 6.3.1 | 关系数据持久化、Schema 迁移、事务和生成客户端。 |
@@ -213,9 +213,9 @@ FlyNext 的 AFS 客户端契约支持两种按请求选择的后端：
 
 截图使用合成数据，展示当前界面，不代表已部署的网站。
 
-| 桌面航班搜索 | 移动端航班搜索 | DEMO 结账确认 |
+| 桌面端转机航班 | 移动端转机航班 | DEMO 结账确认 |
 | --- | --- | --- |
-| ![桌面端航班搜索和新版导航栏](docs/screenshots/ui-flights-1440-light.png) | ![移动端航班搜索和新版导航栏](docs/screenshots/ui-flights-390-light.png) | ![DEMO 结账确认和收据入口](docs/screenshots/demo-confirmation.png) |
+| ![桌面端并排展示去程和返程，标出转机机场](docs/screenshots/flight-connections-desktop.png) | ![移动端航班结果标出波士顿转机](docs/screenshots/flight-connections-mobile.png) | ![已确认行程的去返程路线和 PDF 下载入口](docs/screenshots/demo-confirmation.png) |
 
 ## 限制与许可
 

@@ -48,7 +48,7 @@ function isNotAnOwner(status: number): boolean {
  */
 function EmptyListings() {
     return (
-        <div className="card mx-auto max-w-xl p-10 text-center">
+        <div className="card text-center">
             <span
                 className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-400"
                 aria-hidden="true"
@@ -71,20 +71,14 @@ function EmptyListings() {
                 You haven&apos;t listed any hotels yet
             </h2>
             <p className="mx-auto mt-3 max-w-md muted">
-                Become a host and your property can be booked by travellers
-                searching FlyNext. Listing takes a couple of minutes: add the
-                hotel, then add the room types you want to sell and how many of
-                each are available.
+                Add your property, then create room types and set the number of rooms available to travellers.
             </p>
             <Link
                 href="/hotels/new"
-                className="mt-7 inline-block rounded-lg bg-emerald-600 px-6 py-3 font-semibold text-white shadow-sm transition-colors hover:bg-emerald-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+                className="button-primary mt-6"
             >
                 Create Your First Hotel
             </Link>
-            <p className="mt-4 text-sm text-gray-500 dark:text-zinc-400">
-                Create a listing, then add room types to open your availability calendar.
-            </p>
         </div>
     );
 }
@@ -235,77 +229,77 @@ export default function HotelList() {
     const showEmptyState = loaded && !loading && !error && hotels.length === 0 && (unfilteredEmpty || notAnOwner);
 
     return (
-        <div className="page-shell">
-            <h1 className="text-3xl font-bold mb-6 heading">Your host workspace</h1>
-            <p className="search-intro">Manage properties, room types and nightly availability. Open a listing to view its rooms and guest reservations.</p>
+        <div className="page-shell host-workspace">
+            <header>
+                <div>
+                    <h1 className="font-bold">Your host workspace</h1>
+                    <p className="muted">Manage properties, room types and nightly availability. Open a listing to view its rooms and guest reservations.</p>
+                </div>
+                {!showEmptyState && <Link href="/hotels/new" className="button-primary">Create New Hotel</Link>}
+            </header>
 
             {showEmptyState ? (
-                <EmptyListings />
+                <div className="host-first-listing"><EmptyListings /></div>
             ) : (
                 <>
                     {/* Filter Form in a Single Line */}
                     <form
                         onSubmit={handleFilterSubmit}
-                        className="search-form mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-center"
+                        className="search-form mb-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 items-end"
                     >
-                        <input
-                            type="text"
-                            placeholder="City"
-                            aria-label="City"
-                            value={city}
-                            onChange={(e) => setCity(e.target.value)}
-                            className="field"
-                        />
-                        <input
-                            type="text"
-                            placeholder="Hotel Name"
-                            aria-label="Hotel Name"
-                            value={name}
-                            onChange={(e) => setName(e.target.value)}
-                            className="field"
-                        />
-                        <input
-                            type="number"
-                            placeholder="Star Rating"
-                            aria-label="Star Rating"
-                            value={starRating}
-                            onChange={(e) => setStarRating(e.target.value)}
-                            className="field"
-                        />
-                        <input
-                            type="number"
-                            placeholder="Min Price"
-                            aria-label="Minimum Price"
-                            value={priceMin}
-                            onChange={(e) => setPriceMin(e.target.value)}
-                            className="field"
-                        />
-                        <input
-                            type="number"
-                            placeholder="Max Price"
-                            aria-label="Maximum Price"
-                            value={priceMax}
-                            onChange={(e) => setPriceMax(e.target.value)}
-                            className="field"
-                        />
+                        <label>City
+                            <input
+                                type="text"
+                                placeholder="City"
+                                value={city}
+                                onChange={(e) => setCity(e.target.value)}
+                                className="field"
+                            />
+                        </label>
+                        <label>Hotel name
+                            <input
+                                type="text"
+                                placeholder="Hotel Name"
+                                value={name}
+                                onChange={(e) => setName(e.target.value)}
+                                className="field"
+                            />
+                        </label>
+                        <label>Star rating
+                            <input
+                                type="number"
+                                placeholder="Star Rating"
+                                value={starRating}
+                                onChange={(e) => setStarRating(e.target.value)}
+                                className="field"
+                            />
+                        </label>
+                        <label>Min. price (USD)
+                            <input
+                                type="number"
+                                placeholder="Min Price"
+                                value={priceMin}
+                                onChange={(e) => setPriceMin(e.target.value)}
+                                className="field"
+                            />
+                        </label>
+                        <label>Max. price (USD)
+                            <input
+                                type="number"
+                                placeholder="Max Price"
+                                value={priceMax}
+                                onChange={(e) => setPriceMax(e.target.value)}
+                                className="field"
+                            />
+                        </label>
                         <button
                             type="submit"
                             disabled={loading}
-                            className="bg-black text-white p-2 rounded whitespace-nowrap dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+                            className="button-primary"
                         >
                             Filter
                         </button>
                     </form>
-
-                    {/* Create New Hotel Button */}
-                    <div className="mb-6 text-right">
-                        <Link
-                            href="/hotels/new"
-                            className="button-primary"
-                        >
-                            Create New Hotel
-                        </Link>
-                    </div>
 
                     {loading && <p role="status" className="muted">Loading hotels...</p>}
                     {error && (
@@ -324,7 +318,7 @@ export default function HotelList() {
                                             <img
                                                 src={hotel.logo}
                                                 alt={hotel.name}
-                                                className="w-full h-40 object-cover mb-4 rounded"
+                                                className="host-property-logo mb-4"
                                             />
                                         )}
                                         <h2 className="text-xl font-semibold mb-2 heading">

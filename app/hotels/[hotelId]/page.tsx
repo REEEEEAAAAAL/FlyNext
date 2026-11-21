@@ -73,14 +73,14 @@ export default function HotelDetailsPage() {
       {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
       {hotel ? (
         <>
-          <div className="flex flex-col md:flex-row items-center">
+          <div className="flex flex-wrap items-center gap-5">
             {hotel.logo && (
-              <div className="w-32 h-32 relative mr-6 mb-4 md:mb-0">
+              <div className="relative size-20 shrink-0 sm:size-24">
                 <Image
                   src={hotel.logo}
                   alt={`${hotel.name} logo`}
                   fill
-                  className="object-cover rounded-full"
+                  className="object-contain rounded-xl"
                 />
               </div>
             )}
@@ -94,7 +94,7 @@ export default function HotelDetailsPage() {
               </p>
               <p className="mt-1 muted">
                 <strong>Star Rating:</strong>{" "}
-                <span className="text-yellow-500 dark:text-yellow-400">{renderStars(hotel.starRating)}</span>
+                <span aria-label={`${hotel.starRating} out of 5 stars`} role="img" className="text-amber-700 dark:text-amber-300">{renderStars(hotel.starRating)}</span>
               </p>
             </div>
           </div>

@@ -1,5 +1,8 @@
 "use client";
 
+import { reservationRoutes } from "@/lib/flight-route-display";
+import FlightRouteSummary from "@/app/components/FlightRouteSummary";
+
 import { loginUrl } from "@/app/lib/return-path";
 
 import BookingSteps from "@/app/components/BookingSteps";
@@ -48,10 +51,10 @@ function formatDay(value: Date | string | null | undefined): string {
  * tie-breaker between two bookings of the same itinerary.
  */
 function flightLabel(booking: FlightBookingListItem): string {
-  const from = booking.departure?.goAirport ?? "";
-  const to = booking.arrival?.goAirport ?? "";
-  const route =
-    hasLegValue(from) && hasLegValue(to) ? `${from} → ${to}` : "Route unavailable";
+  const route = reservationRoutes(booking.departure, booking.arrival).map(direction =>
+    `${direction.label}: ${direction.from} → ${direction.to}` +
+    (direction.stops.length ? " via " + direction.stops.join(" → ") : "")
+  ).join(" · ");
   const outbound = `out ${formatDay(booking.departure?.goDate)}`;
   const inbound = hasLegValue(booking.departure?.returnDate)
     ? `, back ${formatDay(booking.departure?.returnDate)}`
@@ -272,6 +275,7 @@ export default function CreateItineraryPage() {
     }
   };
 
+  const selectedFlight = flightBookings.find(booking => booking.id === selectedFlightId);
   return (
     <div className="page-shell page-shell--form card text-[var(--text)]">
       <BookingSteps current="plan" />
@@ -280,7 +284,7 @@ export default function CreateItineraryPage() {
       {loading && <p role="status" className="muted">Loading bookings...</p>}
       {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
       
-      <div className="mb-4">
+      <div className="plan-choice">
         <h2 className="text-xl font-semibold heading">
           Select Flight Reservation
         </h2>
@@ -312,8 +316,9 @@ export default function CreateItineraryPage() {
             <p className="muted">No unlinked flight bookings available. <Link className="text-blue-600 dark:text-blue-300 underline" href="/flights">Find a flight</Link></p>
           )
         )}
+        {selectedFlight && <div className="mt-3"><FlightRouteSummary departure={selectedFlight.departure} arrival={selectedFlight.arrival} /></div>}
       </div>
-      <div className="mb-4">
+      <div className="plan-choice">
         <h2 className="text-xl font-semibold heading">
           Select Hotel Reservation
         </h2>
@@ -348,7 +353,7 @@ export default function CreateItineraryPage() {
          * itineraries.
          */
         disabled={loading || submitting || (selectedFlightId === "" && selectedHotelId === "")}
-        className="px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-500"
+        className="button-primary"
       >
         {submitting ? "Creating..." : "Create Itinerary"}
       </button>

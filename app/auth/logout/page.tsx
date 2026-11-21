@@ -20,7 +20,7 @@ export default function LogoutPage() {
     });
     return () => { active = false; };
   }, [router, attempt]);
-  return <div className="text-center mt-8">
-    {failure ? <><p role="alert">{failure}</p><button className="btn-primary mt-4" onClick={() => setAttempt(value => value + 1)}>Retry sign out</button></> : <p role="status">Logging out...</p>}
+  return <div className="page-shell page-shell--message card text-center">
+    {failure ? <><p role="alert">{failure}</p><button className="button-primary mt-4" onClick={() => setAttempt(value => value + 1)}>Retry sign out</button></> : <p role="status">Logging out...</p>}
   </div>;
 }

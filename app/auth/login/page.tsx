@@ -102,11 +102,11 @@ export default function LoginPage() {
     router.push("/");
   };
   return (
-    <div className="auth-page bg-[var(--background)] py-6">
+    <div className="auth-page login-page">
       <div className="page-shell page-shell--compact card text-[var(--text)]">
         <h1 className="text-2xl font-bold mb-6 heading">Welcome back</h1>
         <p className="search-intro">Your next journey is waiting. Log in to manage your trips.</p>
-        <form onSubmit={handleSubmit} aria-describedby={error ? "login-error" : undefined}>
+        <form method="post" onSubmit={handleSubmit} aria-describedby={error ? "login-error" : undefined}>
           {/* Email Input Field */}
           <div className="mb-4">
             <label htmlFor="login-email" className="label mb-1">
@@ -143,7 +143,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-500"
+            className="button-primary w-full"
           >
             {submitting ? "Logging in..." : "Login"}
           </button>

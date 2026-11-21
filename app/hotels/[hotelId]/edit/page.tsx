@@ -1,5 +1,7 @@
 "use client";
 
+import PhotoPreviews from "@/app/components/PhotoPreviews";
+
 import HostNavigation from "@/app/components/HostNavigation";
 
 import { loginUrl } from "@/app/lib/return-path";
@@ -323,7 +325,7 @@ export default function EditHotelPage() {
     <div className="page-shell page-shell--form card text-black dark:text-zinc-100 relative">
 
 
-            <HostNavigation hotelHref={`/hotels/${hotelId}/edit`} />
+            <HostNavigation />
       <h1 className="text-3xl font-bold mb-6 heading">Edit Hotel</h1>
       {loading ? (
         <p className="text-gray-600 dark:text-zinc-400">Loading hotel details...</p>
@@ -390,7 +392,7 @@ export default function EditHotelPage() {
                 name="logo"
                 accept="image/jpeg,image/png,image/webp"
                 onChange={handleLogoChange}
-                className="hidden"
+                className="sr-only"
               />
             </label>
             <p className="text-xs text-gray-500 dark:text-zinc-400 mt-1">
@@ -481,46 +483,12 @@ export default function EditHotelPage() {
                 accept="image/jpeg,image/png,image/webp"
                 multiple
                 onChange={handleImagesChange}
-                className="hidden"
+                className="sr-only"
               />
             </label>
 
-            {/* Image gallery or default message if none */}
             {selectedImages.length > 0 ? (
-              <div className="mt-2 w-full overflow-x-scroll">
-                <div className="flex flex-nowrap space-x-4">
-                  {selectedImages.map((item) => (
-                    <div key={item.previewUrl} className="relative flex-shrink-0">
-                      <img
-                        src={item.previewUrl}
-                        alt={`Image of ${formData.name}`}
-                        className="h-32 w-auto object-contain"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeImage(item.previewUrl)}
-                        className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-1 hover:bg-red-700 dark:hover:bg-red-500"
-                        title="Remove image"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <PhotoPreviews photos={selectedImages} onRemove={(index) => removeImage(selectedImages[index].previewUrl)} />
             ) : (
               <p className="text-gray-700 dark:text-zinc-200 mt-2">
                 The owner has not provided any images for this hotel.
@@ -531,7 +499,7 @@ export default function EditHotelPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-3 bg-black dark:bg-zinc-700 text-white rounded hover:bg-gray-800 dark:hover:bg-zinc-600 transition-colors"
+            className="button-primary w-full"
           >
             {submitting ? "Updating Hotel..." : "Update Hotel"}
           </button>
@@ -545,7 +513,7 @@ export default function EditHotelPage() {
           <h2 className="text-2xl font-bold heading">Room Types</h2>
           <Link
             href={`/hotels/${hotelId}/room-types/new`}
-            className="bg-green-600 text-white px-3 py-1 rounded hover:bg-green-700 dark:bg-emerald-600 dark:hover:bg-emerald-500 transition-colors"
+            className="button-primary"
           >
             Create New Room Type
           </Link>
@@ -557,12 +525,12 @@ export default function EditHotelPage() {
                 key={roomType.id}
                 href={`/hotels/${hotelId}/room-types/${roomType.id}/edit`}
               >
-                <div className="card-interactive p-4 cursor-pointer">
-                  <p className="font-semibold">Room Type ID: {roomType.id}</p>
-                  <p>Name: {roomType.name}</p>
-                  <p>Amenities: {roomType.amenities}</p>
-                  <p>Price Per Night: ${roomType.pricePerNight}</p>
-                  <p>Configured capacity: {roomType.currentAvailability}</p>
+                <div className="card-interactive p-4 h-full">
+                  <h3 className="heading text-lg font-semibold">{roomType.name}</h3>
+                  <p className="text-sm muted mb-3">Room type #{roomType.id}</p>
+                  <p><strong>${roomType.pricePerNight.toFixed(2)}</strong> <span className="text-sm muted">USD per night</span></p>
+                  <p className="mt-2 text-sm"><span className="muted">Configured capacity:</span> {roomType.currentAvailability}</p>
+                  {roomType.amenities && <p className="mt-1 text-sm"><span className="muted">Amenities:</span> {roomType.amenities}</p>}
                 </div>
               </Link>
             ))}
@@ -598,7 +566,7 @@ export default function EditHotelPage() {
         <button
           type="button"
           onClick={() => router.back()}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-500 transition-colors"
+          className="button-secondary"
         >
           Back
         </button>

@@ -91,6 +91,8 @@ function readSegments(value: Prisma.JsonValue | undefined): FlightSegmentDto[] {
 		segments.push({
 			from: read("from"),
 			to: read("to"),
+			...(read("originCity").trim() && { originCity: read("originCity") }),
+			...(read("destinationCity").trim() && { destinationCity: read("destinationCity") }),
 			departDate: read("departDate"),
 			arriveDate: read("arriveDate"),
 		});

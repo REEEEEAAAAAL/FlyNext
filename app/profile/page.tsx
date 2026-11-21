@@ -279,11 +279,11 @@ export default function ProfilePage() {
     }
 
     return (
-        <div className="min-h-screen bg-[var(--background)] py-12 text-[var(--text)]">
+        <div className="text-[var(--text)]">
             <div className="page-shell page-shell--form profile-card card rounded-xl overflow-hidden">
                 <div className="md:flex">
-                    <div className="p-8 w-full">
-                        <div className="flex justify-between items-center mb-6">
+                    <div className="p-5 sm:p-8 w-full">
+                        <div className="flex flex-wrap justify-between items-center gap-3 mb-6">
                             <h1 className="text-2xl font-bold text-[var(--text)]">
                                 My Profile
                             </h1>
@@ -366,8 +366,8 @@ export default function ProfilePage() {
                                         name="profilePic"
                                         onChange={handleFileChange}
                                         accept="image/jpeg,image/png,image/webp"
-                                        aria-label="Upload profile photo"
-                                        className="hidden"
+                                        aria-label="Upload Photo"
+                                        className="sr-only"
                                     />
                                 </label>
                                 <p className="text-xs text-gray-500 dark:text-zinc-400 mt-1">
@@ -428,7 +428,7 @@ export default function ProfilePage() {
                                     id="email"
                                     value={profileData.email}
                                     readOnly
-                                    className="mt-1 field bg-gray-100 text-gray-500 dark:bg-white/5 dark:text-zinc-400"
+                                    className="mt-1 field profile-email"
                                 />
                                 <p className="mt-1 text-xs text-gray-500 dark:text-zinc-400">
                                     Email address cannot be changed
@@ -458,7 +458,7 @@ export default function ProfilePage() {
                                 <button
                                     type="submit"
                                     disabled={saving}
-                                    className="inline-flex justify-center rounded-md border border-transparent bg-blue-600 py-2 px-4 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:bg-blue-300 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-500 dark:focus:ring-offset-zinc-900 dark:disabled:bg-blue-900/50 dark:disabled:text-zinc-400"
+                                    className="button-primary"
                                 >
                                     {saving ? (
                                         <>

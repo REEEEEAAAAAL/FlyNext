@@ -55,15 +55,18 @@ export default function RoomTypeDetailsPage() {
       {roomType && (
         <div>
           <h1 className="text-3xl font-bold mb-4 heading">{roomType.name}</h1>
-          <p className="text-gray-700 dark:text-zinc-200 mb-2">
-            <strong>Amenities:</strong> {roomType.amenities}
+          <p className="mb-4">
+            <strong className="text-2xl heading">${roomType.pricePerNight.toFixed(2)}</strong>{" "}
+            <span className="muted text-sm">USD per night</span>
           </p>
-          <p className="text-gray-700 dark:text-zinc-200 mb-2">
-            <strong>Price Per Night:</strong> ${roomType.pricePerNight.toFixed(2)} USD
-          </p>
-          <p className="text-gray-700 dark:text-zinc-200 mb-2">
-            <strong>Configured capacity:</strong> {roomType.currentAvailability}. Search with stay dates for availability.
-          </p>
+          <dl className="route-facts">
+            {roomType.amenities && <div><dt>Amenities</dt><dd>{roomType.amenities}</dd></div>}
+            <div>
+              <dt>Configured capacity</dt>
+              <dd>{roomType.currentAvailability} {roomType.currentAvailability === 1 ? "room" : "rooms"}</dd>
+            </div>
+          </dl>
+          <p className="mt-2 muted text-sm">Search with stay dates for availability.</p>
           <div className="mt-6"><ImageGallery images={roomType.images ?? []} name={roomType.name} /></div>
           <HotelStayPicker hotelId={hotelId} rooms={[roomType]} roomDetail />
         </div>

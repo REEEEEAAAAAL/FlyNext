@@ -1,5 +1,7 @@
 "use client";
 
+import BookingStatusBadge from "@/app/components/BookingStatusBadge";
+
 import { loginUrl } from "@/app/lib/return-path";
 
 import EmptyState from "@/app/components/EmptyState";
@@ -12,7 +14,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { clearAccessToken } from "@/app/lib/session";
-import { transferAirports } from "@/app/lib/booking-display";
+import { reservationRoutes } from "@/lib/flight-route-display";
 
 /** The flights of a booked direction, as the reservation stores them. */
 interface StoredFlight {
@@ -134,30 +136,17 @@ export default function ItineraryListPage() {
         return date.toLocaleDateString("en-US");
     };
 
-    /*
-     * Status chips keep their light-mode fill and switch to a translucent fill
-     * + soft text + hairline ring on dark, so a chip reads as a chip instead of
-     * a bright pale block sitting on the zinc-900 panel.
-     */
-    const getStatusColor = (status: string) => {
-        switch (status) {
-            case "CONFIRMED":
-                return "bg-green-100 text-green-800 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-1 dark:ring-emerald-500/30";
-            case "CANCELLED":
-                return "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300 dark:ring-1 dark:ring-red-500/30";
-            case "DRAFT":
-                return "bg-yellow-100 text-yellow-800 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-1 dark:ring-amber-500/30";
-            default:
-                return "bg-gray-100 text-gray-800 dark:bg-white/10 dark:text-zinc-300 dark:ring-1 dark:ring-white/15";
-        }
-    };
-
     return (
-        <div className="page-shell card text-black dark:text-zinc-100">
-            <h1 className="text-3xl font-bold mb-6 heading">
-                Your trips, in one place
-            </h1>
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-6"><p className="muted text-sm">Review reservations, confirm your demo booking, or manage a change of plans.</p>{itineraries.length > 0 && <Link className="button-primary" href="/itineraries/new">Build an itinerary</Link>}</div>
+        <div className="page-shell records-page">
+            <header className="mb-6">
+                <div className="records-title-row">
+                    <h1 className="text-3xl font-bold heading">Your trips, in one place</h1>
+                    {itineraries.length > 0 && (
+                        <Link className="button-primary" href="/itineraries/new">Build an itinerary</Link>
+                    )}
+                </div>
+                <p className="muted text-sm mt-3">Review reservations, confirm your demo booking, or manage a change of plans.</p>
+            </header>
             {loading && <p role="status" className="muted">Loading itineraries...</p>}
             {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
             {itineraries.length > 0 ? (
@@ -165,7 +154,7 @@ export default function ItineraryListPage() {
                     {itineraries.map((itinerary, index) => (
                         <div
                             key={itinerary.id}
-                            className="p-6 border border-gray-300 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                            className="record-panel"
                         >
                             <div className="booking-card-header flex flex-wrap gap-4 justify-between items-start">
                                 <div>
@@ -176,13 +165,7 @@ export default function ItineraryListPage() {
                                         <span className="font-medium">
                                             Status:
                                         </span>{" "}
-                                        <span
-                                            className={`px-2 py-1 rounded text-xs ${getStatusColor(
-                                                itinerary.status
-                                            )}`}
-                                        >
-                                            {itinerary.status}
-                                        </span>
+                                        <BookingStatusBadge status={itinerary.status} />
                                     </p>
                                     <p className="muted mb-1">
                                         <span className="font-medium">
@@ -199,7 +182,7 @@ export default function ItineraryListPage() {
                                 </div>
                                 <Link
                                     href={`/itineraries/${itinerary.id}`}
-                                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors dark:bg-blue-600 dark:hover:bg-blue-500"
+                                    className="button-secondary"
                                 >
                                     View Details
                                 </Link>
@@ -207,89 +190,23 @@ export default function ItineraryListPage() {
 
                             <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
                                 {itinerary.flight && (
-                                    <div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded">
-                                        <h3 className="font-medium text-blue-800 dark:text-blue-300 mb-2">
+                                    <section className="trip-segment trip-flight">
+                                        <h3>
                                             Flight
                                         </h3>
-                                        <p className="text-gray-700 dark:text-zinc-200">
-                                            <span className="font-medium">
-                                                Departure:
-                                            </span>{" "}
-                                            {formatDate(
-                                                itinerary.flight.departure
-                                                    .goDate
-                                            )}
-                                        </p>
-                                        <p className="text-gray-700 dark:text-zinc-200">
-                                            <span className="font-medium">
-                                                From:
-                                            </span>{" "}
-                                            {
-                                                itinerary.flight.departure
-                                                    .goAirport
-                                            }
-                                        </p>
-                                        {/*
-                                          The airport the journey changes planes
-                                          at, when it changes at one: a connecting
-                                          ticket otherwise reads as non-stop.
-                                        */}
-                                        {transferAirports(
-                                            itinerary.flight.departure.goLegs
-                                        ).length > 0 && (
-                                            <p className="text-gray-700 dark:text-zinc-200">
-                                                <span className="font-medium">
-                                                    Via:
-                                                </span>{" "}
-                                                {transferAirports(
-                                                    itinerary.flight.departure
-                                                        .goLegs
-                                                ).join(" → ")}
-                                            </p>
-                                        )}
-                                        {/*
-                                          The API marks an absent leg with a
-                                          single space, which `new Date()` cannot
-                                          parse, so the sentinel is tested for
-                                          explicitly rather than by truthiness.
-                                        */}
-                                        {itinerary.flight.departure.returnDate !=
-                                            null &&
-                                            itinerary.flight.departure
-                                                .returnDate !== " " && (
-                                            <>
-                                                <p className="text-gray-700 dark:text-zinc-200">
-                                                    <span className="font-medium">
-                                                        Return:
-                                                    </span>{" "}
-                                                    {formatDate(
-                                                        itinerary.flight.departure
-                                                            .returnDate
-                                                    )}
-                                                </p>
-                                                {transferAirports(
-                                                    itinerary.flight.departure
-                                                        .returnLegs
-                                                ).length > 0 && (
-                                                    <p className="text-gray-700 dark:text-zinc-200">
-                                                        <span className="font-medium">
-                                                            Return via:
-                                                        </span>{" "}
-                                                        {transferAirports(
-                                                            itinerary.flight
-                                                                .departure
-                                                                .returnLegs
-                                                        ).join(" → ")}
-                                                    </p>
-                                                )}
-                                            </>
-                                        )}
-                                    </div>
+                                        {reservationRoutes(itinerary.flight.departure, itinerary.flight.arrival).map(route => (
+                                            <div key={route.label} className="mb-2 last:mb-0">
+                                                <p className="font-semibold">{route.label} · {route.from} → {route.to}</p>
+                                                {route.stops.length > 0 && <p>Via {route.stops.join(" → ")}</p>}
+                                                <p className="muted">{formatDate(route.departDate ?? "")}</p>
+                                            </div>
+                                        ))}
+                                    </section>
                                 )}
 
                                 {itinerary.hotel && (
-                                    <div className="p-3 bg-green-50 dark:bg-emerald-500/10 rounded">
-                                        <h3 className="font-medium text-green-800 dark:text-emerald-300 mb-2">
+                                    <section className="trip-segment trip-hotel">
+                                        <h3>
                                             Hotel
                                         </h3>
                                         <p className="text-gray-700 dark:text-zinc-200">
@@ -311,7 +228,7 @@ export default function ItineraryListPage() {
                                             </span>{" "}
                                             {formatStayDate(itinerary.hotel.checkOut)}
                                         </p>
-                                    </div>
+                                    </section>
                                 )}
                             </div>
                         </div>
@@ -319,7 +236,7 @@ export default function ItineraryListPage() {
                 </div>
             ) : (
                 !loading && !error && (
-                    <EmptyState title="Your next trip starts here" description="Reserve a flight or stay, then bring your bookings together in one itinerary." href="/itineraries/new" action="Build an itinerary" />
+                    <div className="trip-empty"><EmptyState title="Your next trip starts here" description="Reserve a flight or stay, then bring your bookings together in one itinerary." href="/itineraries/new" action="Build an itinerary" /></div>
                 )
             )}
         </div>

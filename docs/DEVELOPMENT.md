@@ -31,6 +31,16 @@ Review and apply the eight application migrations with `npm run prisma:migrate` 
 
 `npm run seed` and `npm run seed:prod` delete data and rebuild demo fixtures. The `:prod` suffix means compiled output, not permission to run against production. Do not run either against data that must be preserved.
 
+## Travel UI checks
+
+Use the fixture-backed Playwright suite for keyboard, touch, focus, and layout checks. After a production build, run it with the matching Playwright browsers installed.
+
+```sh
+npx playwright test --config playwright.ui.config.ts --project=chrome
+```
+
+For flight changes, check a direct flight alongside a connection, then select both directions of a round trip and change the result order. Verify that each direction keeps its selection and shows its own transfer airports in search, booking details, itineraries, checkout, and the PDF. Records with an airport code only use the reference catalogue when it contains that code. For stay changes, expand nightly availability at a narrow viewport and check that the monthly calendar fits and distinguishes zero inventory from missing data. Use the guarded E2E runner for flows that actually create or cancel reservations.
+
 ## Database and browser tests
 
 Integration and E2E runners migrate and clear synthetic records. They require a dedicated disposable database, confirm its identity before writes, and exclude configured business databases. Do not bypass the runners, reuse a running app server for E2E, or redirect these tests to a Docker application database.

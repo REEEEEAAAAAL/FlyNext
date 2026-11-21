@@ -1,5 +1,7 @@
 "use client";
 
+import PhotoPreviews from "@/app/components/PhotoPreviews";
+
 import HostNavigation from "@/app/components/HostNavigation";
 
 import { loginUrl } from "@/app/lib/return-path";
@@ -284,60 +286,17 @@ export default function CreateRoomTypePage() {
                             accept="image/jpeg,image/png,image/webp"
                             multiple
                             onChange={handleImagesChange}
-                            className="hidden"
+                            className="sr-only"
                         />
                     </label>
-                    {/* Horizontally scrollable gallery */}
                     {selectedImages.length > 0 && (
-                        <div className="mt-2 w-full overflow-x-auto">
-                            <div className="flex flex-nowrap space-x-4">
-                                {selectedImages.map((item, index) => (
-                                    <div
-                                        /*
-                                         * Keyed by the preview URL, not the index:
-                                         * with an index key, removing one image made
-                                         * React reuse the neighbour's DOM for a
-                                         * different item.
-                                         */
-                                        key={item.previewUrl}
-                                        className="relative flex-shrink-0"
-                                    >
-                                        <img
-                                            src={item.previewUrl}
-                                            alt={`Image ${index + 1}`}
-                                            className="h-32 w-auto object-contain"
-                                        />
-                                        <button
-                                            type="button"
-                                            onClick={() => removeImage(index)}
-                                            className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-1 hover:bg-red-700 dark:hover:bg-red-500"
-                                            title="Remove image"
-                                        >
-                                            <svg
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                className="h-4 w-4"
-                                                fill="none"
-                                                viewBox="0 0 24 24"
-                                                stroke="currentColor"
-                                            >
-                                                <path
-                                                    strokeLinecap="round"
-                                                    strokeLinejoin="round"
-                                                    strokeWidth={2}
-                                                    d="M6 18L18 6M6 6l12 12"
-                                                />
-                                            </svg>
-                                        </button>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
+                      <PhotoPreviews photos={selectedImages} onRemove={removeImage} />
                     )}
                 </div>
                 <button
                     type="submit"
                     disabled={submitting}
-                    className="w-full py-3 bg-black dark:bg-zinc-700 text-white rounded hover:bg-gray-800 dark:hover:bg-zinc-600 transition-colors"
+                    className="button-primary w-full"
                 >
                     {submitting ? "Creating Room Type..." : "Create Room Type"}
                 </button>
@@ -347,7 +306,7 @@ export default function CreateRoomTypePage() {
                 <button
                     type="button"
                     onClick={() => router.back()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-500 transition-colors"
+                    className="button-secondary"
                 >
                     Back
                 </button>

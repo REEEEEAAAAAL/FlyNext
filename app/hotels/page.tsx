@@ -32,6 +32,11 @@ interface Hotel {
   roomTypes: RoomType[];
 }
 
+/** Anchor the native dollar step to the entered cents so decimal limits remain valid. */
+function rateStepBase(value: string): number {
+  return Math.max(0, Math.round(Number(value) * 100) % 100) / 100 || 0;
+}
+
 export default function HotelSearchPage() {
   const router = useRouter();
   const { error: toastError } = useFeedback();
@@ -125,9 +130,9 @@ export default function HotelSearchPage() {
     } finally { bookingInFlight.current = false; setPendingRoom(""); }
   };
 
-  return <div className="page-shell card">
+  return <div className="search-page page-shell">
     <BookingSteps current="reserve" />
-    <h1 className="text-3xl font-bold mb-6 heading">Find your place to stay</h1>
+    <h1 className="search-title">Find your place to stay</h1>
     <p className="search-intro">Compare rooms, nightly rates and stay totals in USD.</p>
     <form onSubmit={event => {event.preventDefault();applySearch(draft);}} className="search-form mb-8">
       <fieldset disabled={Boolean(pendingRoom)} className="hotel-search-fields">
@@ -135,13 +140,15 @@ export default function HotelSearchPage() {
         <LocationCombobox label="Destination" kind="cities" value={draft.city} onChange={city=>setDraft({...draft,city})} placeholder="Any destination" required={false} disabled={Boolean(pendingRoom)} />
         <div><label htmlFor="check-in" className="label">Check-in:</label><input id="check-in" type="date" className="field" value={draft.checkIn} min={earliest} max={latestCheckIn} required={Boolean(draft.checkOut)} onChange={event=>setDraft({...draft,checkIn:event.target.value})} /></div>
         <div><label htmlFor="check-out" className="label">Check-out:</label><input id="check-out" type="date" className="field" value={draft.checkOut} min={hotelCheckoutMin(draft.checkIn, today)} max={latestCheckOut} required={Boolean(draft.checkIn)} onChange={event=>setDraft({...draft,checkOut:event.target.value})} /></div>
-        <details className="hotel-search-filters"><summary className="text-sm font-semibold cursor-pointer text-blue-600 dark:text-blue-300">Refine your stay</summary><div className="grid sm:grid-cols-2 gap-4 mt-4">
-          <div><label className="label" htmlFor="hotel-name-filter">Hotel name</label><input className="field" id="hotel-name-filter" value={draft.name} onChange={event=>setDraft({...draft,name:event.target.value})} placeholder="Any hotel" /></div>
-          <div><label className="label" htmlFor="hotel-rating-filter">Star rating</label><select className="field" id="hotel-rating-filter" value={draft.starRating} onChange={event=>setDraft({...draft,starRating:event.target.value})}><option value="">Any rating</option>{[1,2,3,4,5].map(rating=><option key={rating} value={rating}>{rating} stars</option>)}</select></div>
-          <div><label className="label" htmlFor="hotel-min-price">Minimum nightly rate (USD)</label><input className="field" id="hotel-min-price" type="number" min="0" step="0.01" value={draft.priceMin} onChange={event=>setDraft({...draft,priceMin:event.target.value})} placeholder="No minimum" /></div>
-          <div><label className="label" htmlFor="hotel-max-price">Maximum nightly rate (USD)</label><input className="field" id="hotel-max-price" type="number" min="0" step="0.01" value={draft.priceMax} onChange={event=>setDraft({...draft,priceMax:event.target.value})} placeholder="No maximum" /></div>
-        </div></details>
-        <div className="hotel-search-actions"><button type="submit" className="button-primary" disabled={loading}>{loading ? "Searching stays…" : "Search stays"}</button><button type="button" className="button-secondary" onClick={()=>applySearch(EMPTY_HOTEL_SEARCH)}>Show All</button>{hasFilters && <button type="button" className="text-sm underline muted" onClick={clearFilters}>Clear filters</button>}</div>
+        <div className="hotel-search-tools">
+          <details className="hotel-search-filters"><summary className="text-sm font-semibold cursor-pointer text-blue-600 dark:text-blue-300">Refine your stay</summary><div className="grid sm:grid-cols-2 gap-4 mt-4">
+            <div><label className="label" htmlFor="hotel-name-filter">Hotel name</label><input className="field" id="hotel-name-filter" value={draft.name} onChange={event=>setDraft({...draft,name:event.target.value})} placeholder="Any hotel" /></div>
+            <div><label className="label" htmlFor="hotel-rating-filter">Star rating</label><select className="field" id="hotel-rating-filter" value={draft.starRating} onChange={event=>setDraft({...draft,starRating:event.target.value})}><option value="">Any rating</option>{[1,2,3,4,5].map(rating=><option key={rating} value={rating}>{rating} stars</option>)}</select></div>
+            <div><label className="label" htmlFor="hotel-min-price">Minimum nightly rate (USD)</label><input className="field" id="hotel-min-price" type="number" min={rateStepBase(draft.priceMin)} step="1" value={draft.priceMin} onChange={event=>setDraft({...draft,priceMin:event.target.value})} placeholder="No minimum" /></div>
+            <div><label className="label" htmlFor="hotel-max-price">Maximum nightly rate (USD)</label><input className="field" id="hotel-max-price" type="number" min={rateStepBase(draft.priceMax)} step="1" value={draft.priceMax} onChange={event=>setDraft({...draft,priceMax:event.target.value})} placeholder="No maximum" /></div>
+          </div></details>
+          <div className="hotel-search-actions"><button type="submit" className="button-primary" disabled={loading}>{loading ? "Searching stays…" : "Search stays"}</button><button type="button" className="button-secondary" onClick={()=>applySearch(EMPTY_HOTEL_SEARCH)}>Show All</button>{hasFilters && <button type="button" className="text-sm underline muted" onClick={clearFilters}>Clear filters</button>}</div>
+        </div>
       </fieldset>
     </form>
     {reservation && <ReservationSuccess kind="stay" reservationId={reservation.id} summary={reservation.summary} />}
@@ -154,7 +161,7 @@ export default function HotelSearchPage() {
       </div>
       {loading && <p role="status" className="muted mb-4">{hotels.length ? "Updating stays…" : "Loading hotels…"}</p>}
       <ul className={`space-y-6${loading ? " opacity-60" : ""}`}>
-        {hotels.map(hotel=><li key={hotel.id} className="surface p-5 sm:p-6">
+        {hotels.map(hotel=><li key={hotel.id} className="hotel-result surface p-5 sm:p-6">
           {hotel.images?.[0] && <img src={hotel.images[0]} alt={hotel.name} loading="lazy" className="w-full h-48 sm:h-64 object-cover rounded-xl mb-5" />}
           <div className="flex flex-wrap gap-4 justify-between items-start"><div><h3 className="text-xl font-semibold heading">{hotel.name}</h3><p className="muted text-sm mt-1">{hotel.address}</p><p className="muted text-sm">{hotel.location}</p></div><span className="text-yellow-600 dark:text-yellow-400" aria-label={`${hotel.starRating} stars`}>{"★".repeat(hotel.starRating)}</span></div>
           <div className="mt-4 space-y-3">{hotel.roomTypes.map(room=>{

@@ -127,9 +127,9 @@ export default function RegisterPage() {
   return (
     <div className="auth-page bg-[var(--background)] py-6">
       <div className="page-shell page-shell--compact card text-[var(--text)]">
-        <h1 className="text-2xl font-bold mb-6 heading">A world of possibility</h1>
+        <h1 className="text-2xl font-bold mb-6 heading">Create an account</h1>
         <p className="search-intro">Create an account to explore the full FlyNext demo.</p>
-        <form onSubmit={handleSubmit}>
+        <form method="post" onSubmit={handleSubmit}>
           {/* Email Input Field */}
           <div className="mb-4">
             <label htmlFor="register-email" className="label mb-1">
@@ -217,7 +217,7 @@ export default function RegisterPage() {
           <button
             type="submit"
             disabled={submitting}
-            className="w-full py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-blue-600 dark:hover:bg-blue-500"
+            className="button-primary w-full"
           >
             {submitting ? "Registering..." : "Register"}
           </button>

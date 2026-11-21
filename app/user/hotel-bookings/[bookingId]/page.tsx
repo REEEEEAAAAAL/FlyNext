@@ -1,5 +1,7 @@
 "use client";
 
+import BookingStatusBadge from "@/app/components/BookingStatusBadge";
+
 import { loginUrl } from "@/app/lib/return-path";
 
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
@@ -263,9 +265,10 @@ export default function HotelBookingDetailsPage() {
         return <div className="page-shell">Booking not found</div>;
 
     const amenities = parseAmenities(booking.room.amenities);
+    const nights = stayNights(booking.checkIn, booking.checkOut);
 
     return (
-        <div className="card page-shell text-black dark:text-zinc-100">
+        <div className="page-shell records-page">
             <div className="mb-6">
                 <Link
                     href="/user/hotel-bookings"
@@ -280,121 +283,64 @@ export default function HotelBookingDetailsPage() {
             </h1>
 
             <div className="space-y-6">
-                <div className="p-6 border border-gray-300 dark:border-white/10 rounded bg-gray-50 dark:bg-white/5">
-                    <div className="flex justify-between items-start mb-4">
+                <div className="record-panel">
+                    <div className="record-heading">
                         <div>
                             <h2 className="text-xl font-semibold">
-                                Booking #{hotelReference(booking.id)}
+                                {booking.hotel.name}
                             </h2>
                             <p className="muted">
-                                {booking.hotel.name} &middot; {booking.hotel.address}
+                                Booking #{hotelReference(booking.id)}
                             </p>
                         </div>
                         <div className="text-right">
-                            <p
-                                className={`text-lg font-semibold ${
-                                    booking.status === "CONFIRMED"
-                                        ? "text-green-600 dark:text-emerald-400"
-                                        : booking.status === "CANCELLED"
-                                        ? "text-red-600 dark:text-red-400"
-                                        : "text-yellow-600 dark:text-amber-400"
-                                }`}
-                            >
-                                {booking.status}
-                            </p>
-                            <p className="text-2xl font-bold">
+                            <BookingStatusBadge status={booking.status} />
+                            <p className="text-2xl font-bold mt-2"><span className="stay-price-label">Total</span>{" "}
                                 ${booking.price.toFixed(2)}
                             </p>
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-                        <div className="border divider p-4 rounded">
-                            <h3 className="font-medium text-lg mb-3 heading">
-                                Check-In
-                            </h3>
-                            <p className="text-gray-700 dark:text-zinc-200">
-                                {formatStayDate(booking.checkIn)}
-                            </p>
-                        </div>
-
-                        <div className="border divider p-4 rounded">
-                            <h3 className="font-medium text-lg mb-3 heading">
-                                Check-Out
-                            </h3>
-                            <p className="text-gray-700 dark:text-zinc-200">
-                                {formatStayDate(booking.checkOut)}
-                            </p>
-                            {(() => {
-                                const nights = stayNights(
-                                    booking.checkIn,
-                                    booking.checkOut
-                                );
-                                return nights === null ? null : (
-                                    <p className="muted mt-1 text-sm">
-                                        {nights} {nights === 1 ? "night" : "nights"}
-                                    </p>
-                                );
-                            })()}
-                        </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="border divider p-4 rounded">
-                            <h3 className="font-medium text-lg mb-3 heading">
-                                Room Details
-                            </h3>
-                            <p className="text-gray-700 dark:text-zinc-200 mb-2">
-                                <span className="font-medium">Type:</span>{" "}
-                                {booking.room.type ??
-                                    "Room type no longer available"}
-                            </p>
+                    <dl className="stay-dates">
+                        <div><dt>Check-in</dt><dd>{formatStayDate(booking.checkIn)}</dd></div>
+                        <div><dt>Check-out</dt><dd>{formatStayDate(booking.checkOut)}</dd></div>
+                        {nights !== null && <div><dt>Length of stay</dt><dd>{nights} {nights === 1 ? "night" : "nights"}</dd></div>}
+                    </dl>
+                    <div className="stay-information">
+                        <section>
+                            <h3>Room details</h3>
+                            <p>{booking.room.type ?? "Room type no longer available"}</p>
                             {amenities.length > 0 && (
-                                <div>
-                                    <p className="font-medium text-gray-700 dark:text-zinc-200 mb-1">
-                                        Amenities:
-                                    </p>
-                                    <ul className="list-disc list-inside text-gray-700 dark:text-zinc-200">
-                                        {amenities.map((amenity, index) => (
-                                            <li key={index}>{amenity}</li>
-                                        ))}
-                                    </ul>
-                                </div>
+                                <ul className="stay-amenities" aria-label="Room amenities">
+                                    {amenities.map((amenity, index) => <li key={index}>{amenity}</li>)}
+                                </ul>
                             )}
-                        </div>
-
-                        <div className="border divider p-4 rounded">
-                            <h3 className="font-medium text-lg mb-3 heading">
-                                Hotel Location
-                            </h3>
-                            <p className="text-gray-700 dark:text-zinc-200">
-                                {booking.hotel.location}
-                            </p>
-                        </div>
+                        </section>
+                        <section>
+                            <h3>Hotel location</h3>
+                            <p>{booking.hotel.address}</p>
+                            <p className="muted">{booking.hotel.location}</p>
+                        </section>
                     </div>
 
-                    <div className="mt-6 pt-4 border-t divider">
-                        <div className="flex flex-wrap gap-4 mb-4">
-                            <button
-                                onClick={handleCancelBooking}
-                                disabled={
-                                    actionLoading ||
-                                    booking.status === "CANCELLED"
-                                }
-                                className={`px-4 py-2 rounded-md ${
-                                    actionLoading
-                                        ? "bg-red-300"
-                                        : "bg-red-600 hover:bg-red-700 dark:hover:bg-red-500"
-                                } text-white disabled:bg-gray-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed`}
-                            >
-                                {actionLoading
-                                    ? "Cancelling..."
-                                    : "Cancel Booking"}
-                            </button>
-                        </div>
-                        <p className="text-sm text-gray-500 dark:text-zinc-400">
-                            Booking created: {formatLegDate(booking.createdAt)}
-                        </p>
+                    <div className="stay-booking-footer">
+                        <p className="text-sm muted">Booking created: {formatLegDate(booking.createdAt)}</p>
+                        <button
+                            onClick={handleCancelBooking}
+                            disabled={
+                                actionLoading ||
+                                booking.status === "CANCELLED"
+                            }
+                            className={`px-4 py-2 rounded-md ${
+                                actionLoading
+                                    ? "bg-red-300"
+                                    : "bg-red-600 hover:bg-red-700 dark:hover:bg-red-500"
+                            } text-white disabled:bg-gray-300 dark:disabled:bg-zinc-700 disabled:cursor-not-allowed`}
+                        >
+                            {actionLoading
+                                ? "Cancelling..."
+                                : "Cancel Booking"}
+                        </button>
                     </div>
                 </div>
             </div>

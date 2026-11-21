@@ -149,6 +149,11 @@ test("mobile navigation, suggestions, gallery and reservation confirmations", as
   const dialog = await page.getByRole("dialog").boundingBox();
   expect(dialog && dialog.x >= 0 && dialog.x + dialog.width <= 320).toBe(true);
   await page.getByRole("button", { name: "Close photos" }).click();
+  const calendar = page.locator(".nightly-calendar").first();
+  await calendar.locator("summary").click();
+  await expect(calendar.getByRole("table").first()).toBeVisible();
+  await checkBounds(page);
+  await calendar.locator("summary").click();
   await page.getByRole("button", { name: "Toggle navigation" }).click();
   await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();
   await checkBounds(page);
@@ -231,6 +236,12 @@ test("a short touch tap completes airport and city prefixes", async ({ page }) =
     await input.fill(prefix);
     const option = page.getByRole("option").first();
     await expect(option).toBeVisible();
+    const field = await input.boundingBox();
+    const list = await page.getByRole("listbox", { name: label + " suggestions" }).boundingBox();
+    if (!field || !list) throw new Error("Expected visible location field and suggestions");
+    const gap = list.y - (field.y + field.height);
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThanOrEqual(4);
     await option.tap();
     await expect(input).toHaveValue(completed);
     await expect(input).toBeFocused();

@@ -1,4 +1,5 @@
 "use client";
+import { airportLabel, describeRoute } from "@/lib/flight-route-display";
 
 import { loginUrl } from "@/app/lib/return-path";
 
@@ -61,6 +62,30 @@ interface FlightGroup {
     flights: Flight[];
     totalPrice?: number;
     totalDuration?: number;
+}
+
+const flightClock = new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" });
+const flightDay = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric" });
+
+/** Summarize just one direction so a round-trip destination never appears as a layover. */
+function searchRoute(flights: Flight[]) {
+    return describeRoute(undefined, undefined, flights.map(({ origin, destination }) => ({
+        from: origin?.code, originCity: origin?.city, to: destination?.code, destinationCity: destination?.city,
+    })));
+}
+
+function routeText(flights: Flight[]): string {
+    const { from, to, stops } = searchRoute(flights);
+    return from + " → " + to + (stops.length ? " via " + stops.join(" → ") : "");
+}
+
+function SchedulePoint({ stamp, airport }: { stamp?: string; airport?: string }) {
+    const date = stamp ? new Date(stamp) : null;
+    const known = date && Number.isFinite(date.getTime());
+    return <div className="schedule-point">
+        <time dateTime={known ? stamp : undefined}>{known ? flightClock.format(date) : "—"}</time>
+        <span>{airport ?? "—"}{known && <> · <span className="whitespace-nowrap">{flightDay.format(date)}</span></>}</span>
+    </div>;
 }
 
 /**
@@ -173,7 +198,7 @@ const bookingBlocker = (flights: Flight[]): string | null => {
         if (layover < 0) {
             return "These flights cannot be booked as one trip, because the later flight leaves before the earlier one arrives. Choose a return that departs after all the outbound legs have landed — a return on the same day cannot be part of the same booking.";
         }
-        return `These flights cannot be booked as one trip, because the connection at ${flights[index].origin?.code ?? "the hub"} leaves less than an hour after the previous leg lands. Choose a different connection.`;
+        return `These flights cannot be booked as one trip, because the connection at ${airportLabel(flights[index].origin?.code, flights[index].origin?.city)} leaves less than an hour after the previous leg lands. Choose a different connection.`;
     }
     return null;
 };
@@ -184,7 +209,7 @@ const bookingBlocker = (flights: Flight[]): string | null => {
  * the onward flight actually leaves.
  */
 const layoverLabel = (previous: Flight, next: Flight): string => {
-    const where = `Layover at ${next.origin?.city ?? "the hub"} (${next.origin?.code ?? "?"})`;
+    const where = `Layover at ${airportLabel(next.origin?.code ?? previous.destination?.code, next.origin?.city ?? previous.destination?.city)}`;
     const minutes = legLayoverMinutes(previous, next);
     const duration = minutes === null ? "" : ` · ${formatDuration(minutes)}`;
     const crossesDay =
@@ -230,6 +255,7 @@ export default function FlightSearchPage() {
 
     const [loading, setLoading] = useState(false);
     const [searched, setSearched] = useState(false);
+    const [sortBy, setSortBy] = useState({ outbound: "original", return: "original" });
     const [error, setError] = useState("");
 
     // Keep booking outcomes visible after the request completes.
@@ -386,15 +412,12 @@ export default function FlightSearchPage() {
                     (sum, flight) => sum + flight.price,
                     0
                 );
-                // `durationMinutes` only: a leg without one contributes nothing
-                // rather than poisoning the sum with a string.
-                const totalDuration = group.flights.reduce(
-                    (sum, flight) =>
-                        typeof flight.durationMinutes === "number"
-                            ? sum + flight.durationMinutes
-                            : sum,
-                    0
-                );
+                // Compare whole journeys, including the time spent between connecting flights.
+                const first = group.flights[0];
+                const last = group.flights[group.flights.length - 1];
+                const elapsed = (Date.parse(last?.arrivalTime ?? "") - Date.parse(first?.departureTime ?? "")) / 60000;
+                const totalDuration = Number.isFinite(elapsed) && elapsed >= 0 ? elapsed
+                    : group.flights.length === 1 ? first.durationMinutes : undefined;
 
                 return {
                     ...group,
@@ -576,8 +599,11 @@ export default function FlightSearchPage() {
                 return;
             }
 
-            const outboundEnd = flights[flights.length - returnLegCount - 1];
-            setReservation({id:data.reservationId,summary:`${returnLegCount ? "Round trip" : "One-way"} · ${flights[0]?.origin?.code ?? "Departure"} to ${outboundEnd?.destination?.code ?? "Arrival"}`});
+            const split = flights.length - returnLegCount;
+            const summary = returnLegCount
+                ? "Outbound: " + routeText(flights.slice(0, split)) + " · Return: " + routeText(flights.slice(split))
+                : "One-way · " + routeText(flights);
+            setReservation({id:data.reservationId, summary});
             await acknowledgeBooking("/api/flights/book", { email: user.email, firstName: user.firstName, lastName: user.lastName, flightIds: flights.map(f => f.id), returnLegCount });
         } catch (error: any) {
             const failure = "The result is unknown. Retry with the same selection or check My Flight Bookings.";
@@ -617,9 +643,9 @@ export default function FlightSearchPage() {
         <div className="flight-segment">
             <div className="segment-airline"><span className="airline-mark" aria-hidden="true">↗</span><div><strong>{flight.airline?.name ?? "Airline"}</strong><span>{flight.flightNumber ?? "Flight details"}</span></div></div>
             <div className="segment-route">
-                <div><time className="segment-clock" dateTime={flight.departureTime}>{flight.departureTime ? new Date(flight.departureTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Time unavailable"}</time><strong>{flight.origin?.code ?? "—"}</strong><span>{flight.origin?.city}</span><span>{flight.departureTime ? new Date(flight.departureTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}</span></div>
+                <div><time className="segment-clock" dateTime={flight.departureTime}>{flight.departureTime ? new Date(flight.departureTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Time unavailable"}</time><strong>{airportLabel(flight.origin?.code, flight.origin?.city)}</strong><span>{flight.departureTime ? new Date(flight.departureTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}</span></div>
                 <div className="segment-duration"><span>{flight.durationMinutes != null ? formatDuration(flight.durationMinutes) : "—"}</span><span className="segment-line" aria-hidden="true" /></div>
-                <div><time className="segment-clock" dateTime={flight.arrivalTime}>{flight.arrivalTime ? new Date(flight.arrivalTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Time unavailable"}</time><strong>{flight.destination?.code ?? "—"}</strong><span>{flight.destination?.city}</span><span>{flight.arrivalTime ? new Date(flight.arrivalTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}</span></div>
+                <div><time className="segment-clock" dateTime={flight.arrivalTime}>{flight.arrivalTime ? new Date(flight.arrivalTime).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : "Time unavailable"}</time><strong>{airportLabel(flight.destination?.code, flight.destination?.city)}</strong><span>{flight.arrivalTime ? new Date(flight.arrivalTime).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : ""}</span></div>
             </div>
             <div className="segment-meta"><span>{flight.availableSeats ?? "Unknown"} seats available</span><span>${flight.price.toFixed(2)} USD / segment</span></div>
         </div>
@@ -636,8 +662,13 @@ export default function FlightSearchPage() {
     const renderResults = (direction: "outbound" | "return") => {
         const outbound = direction === "outbound";
         const groups = outbound ? outboundFlightGroups : returnFlightGroups;
+        const sort = sortBy[direction];
+        const sortedGroups = [...groups];
+        if (sort === "price") sortedGroups.sort((a, b) => (a.totalPrice ?? Infinity) - (b.totalPrice ?? Infinity));
+        if (sort === "duration") sortedGroups.sort((a, b) => (a.totalDuration ?? Infinity) - (b.totalDuration ?? Infinity));
         const selectedId = outbound ? selectedOutboundGroupId : selectedReturnGroupId;
         const selected = outbound ? outboundSelection : returnSelection;
+        const selectedStops = searchRoute(selected).stops;
         const title = outbound ? "Outbound Flights" : "Return Flights";
         const departureDay = outbound ? searchDetails.date : searchDetails.returnDate;
         return (
@@ -645,25 +676,41 @@ export default function FlightSearchPage() {
                 <header className="flight-results-heading">
                     <div className="flight-results-title">
                         <h2 id={direction + "-heading"} className="heading text-2xl font-semibold">{title}</h2>
-                        <span className="muted text-sm">{groups.length} option{groups.length === 1 ? "" : "s"}</span>
+                        {groups.length > 1 && <label className="flight-sort">Sort by
+                            <select aria-label={"Sort " + direction + " flights"} value={sort} onChange={event => setSortBy({ ...sortBy, [direction]: event.target.value })}>
+                                <option value="original">Search order</option>
+                                <option value="price">Lowest price</option>
+                                <option value="duration">Shortest trip</option>
+                            </select>
+                        </label>}
                     </div>
-                    <p className="flight-results-route">{outbound ? searchDetails.origin : searchDetails.destination} → {outbound ? searchDetails.destination : searchDetails.origin}</p>
-                    <time className="muted text-sm" dateTime={departureDay}>{departureDay ? new Date(departureDay + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : ""}</time>
-                    {tripType === "round-trip" && <p className="flight-selection-summary">{selected.length ? "Selected: " + selected.map(flight => flight.flightNumber ?? flight.id).join(" + ") + " · $" + selected.reduce((sum, flight) => sum + flight.price, 0).toFixed(2) + " USD" : "Choose your " + direction + " flight below."}</p>}
+                    <p className="flight-results-route">{airportLabel(outbound ? searchDetails.origin : searchDetails.destination)} → {airportLabel(outbound ? searchDetails.destination : searchDetails.origin)}</p>
+                    <p className="muted text-sm"><time dateTime={departureDay}>{departureDay ? new Date(departureDay + "T12:00:00").toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" }) : ""}</time>{" · "}{groups.length} option{groups.length === 1 ? "" : "s"}{" · Times in "}{flightClock.resolvedOptions().timeZone}</p>
+                    {tripType === "round-trip" && <p className="flight-selection-summary">{selected.length ? "Selected: " + selected.map(flight => flight.flightNumber ?? flight.id).join(" + ") + (selectedStops.length ? " via " + selectedStops.join(" → ") : "") + " · $" + selected.reduce((sum, flight) => sum + flight.price, 0).toFixed(2) + " USD" : "Choose your " + direction + " flight below."}</p>}
                 </header>
                 {groups.length ? <ul className="flight-results-list" aria-label={title + " options"} tabIndex={0}>
-                    {groups.map((group) => {
+                    {sortedGroups.map((group) => {
                         const groupId = generateGroupId(group.flights);
                         const isSelected = tripType === "round-trip" && selectedId === groupId;
+                        const first = group.flights[0];
+                        const last = group.flights[group.flights.length - 1];
+                        const route = searchRoute(group.flights);
                         return <li key={groupId} className={"flight-result-card surface" + (isSelected ? " is-selected" : "")}>
                             <div className="flight-result-overview">
-                                <div><p className="font-semibold heading">{stopsLabel(group.legs)}</p><p className="muted text-sm">Flying time: {group.totalDuration != null ? formatDuration(group.totalDuration) : "N/A"}</p></div>
+                                <div className="flight-schedule">
+                                    <SchedulePoint stamp={first?.departureTime} airport={route.from} />
+                                    <span aria-hidden="true" className="muted">→</span>
+                                    <SchedulePoint stamp={last?.arrivalTime} airport={route.to} />
+                                </div>
                                 <p className="flight-result-price">{group.totalPrice != null ? "$" + group.totalPrice.toFixed(2) : "N/A"}<span>USD / traveller</span></p>
                             </div>
+                            <p className="flight-comparison"><strong>{stopsLabel(group.legs)}{route.stops.length > 0 && " via " + route.stops.join(" → ")}</strong>{group.totalDuration != null && " · " + formatDuration(group.totalDuration)}{" · "}{Array.from(new Set(group.flights.map(flight => flight.airline?.name ?? "Airline"))).join(" / ")}</p>
+                            <details className="flight-details"><summary>Flight details</summary>
                             {group.flights.map((flight, flightIndex) => <div key={flight.id ?? flightIndex}>
                                 {flightIndex > 0 && <p className="my-4 text-center text-sm muted">{layoverLabel(group.flights[flightIndex - 1], flight)}</p>}
                                 {renderFlightDetails(flight)}
                             </div>)}
+                            </details>
                             {tripType === "one-way" ? <button type="button" onClick={() => handleBookOneWay(group.flights)} disabled={booking} className="button-primary mt-4">{booking ? "Booking…" : "Book One‑Way"}</button> : <button
                                 type="button"
                                 className={"flight-select-button" + (isSelected ? " is-selected" : "")}
@@ -675,55 +722,54 @@ export default function FlightSearchPage() {
                         </li>;
                     })}
                 </ul> : <p role="status" className="surface p-6 muted">No {direction} flights found. Try different airports or a different {outbound ? "departure" : "return"} date.</p>}
-                {!groups.length && <button type="button" className="button-secondary mt-3" onClick={()=>document.getElementById("outbound-date")?.focus()}>Change search</button>}
+                {!groups.length && <button type="button" className="button-secondary mt-3" onClick={()=>document.getElementById(outbound ? "outbound-date" : "return-date")?.focus()}>Change search</button>}
             </section>
         );
     };
 
     return (
-        <div className="flight-search-page page-shell card">
+        <div className="flight-search-page search-page page-shell">
             <BookingSteps current="reserve" />
-            <h1 className="text-3xl font-bold mb-6 heading">Find your next flight</h1>
+            <h1 className="search-title">Find your next flight</h1>
             <p className="search-intro">Compare routes, connections and fares. All times follow your device time zone{deviceTimeZone ? ` (${deviceTimeZone})` : ""}. Prices are in USD.</p>
 
-            {/* Trip Type Toggle */}
-            <div className="flex space-x-4 mb-6">
-                <button
-                    className={`px-4 py-2 rounded transition-colors ${tripType === "one-way" ? "bg-black text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-gray-200 text-gray-800 dark:bg-zinc-800 dark:text-zinc-200 dark:ring-1 dark:ring-white/10"}`}
-                    disabled={loading || booking}
-                    aria-pressed={tripType === "one-way"}
-                    onClick={() => { setTripType("one-way"); setSearched(false); setOutboundFlightGroups([]); setReturnFlightGroups([]); setSelectedOutboundGroupId(null); setSelectedReturnGroupId(null); }}
-                >
-                    One‑way
-                </button>
-                <button
-                    className={`px-4 py-2 rounded transition-colors ${tripType === "round-trip" ? "bg-black text-white dark:bg-zinc-100 dark:text-zinc-900" : "bg-gray-200 text-gray-800 dark:bg-zinc-800 dark:text-zinc-200 dark:ring-1 dark:ring-white/10"}`}
-                    disabled={loading || booking}
-                    aria-pressed={tripType === "round-trip"}
-                    onClick={() => { setTripType("round-trip"); setSearched(false); setOutboundFlightGroups([]); setReturnFlightGroups([]); setSelectedOutboundGroupId(null); setSelectedReturnGroupId(null); }}
-                >
-                    Round Trip
-                </button>
-            </div>
-
-            <form onSubmit={handleSearch} className="flight-search-form search-form mb-8 grid sm:grid-cols-2 gap-4">
-                {/* Outbound Flight Inputs */}
-                <LocationCombobox label="From" kind="airports" value={origin} onChange={setOrigin} placeholder="City or airport code" disabled={booking} />
-                <LocationCombobox label="To" kind="airports" value={destination} onChange={setDestination} placeholder="Where are you going?" disabled={booking} />
-                <div>
-                    <label htmlFor="outbound-date" className="label">Departure date:</label>
-                    <input
-                        id="outbound-date"
-                        type="date"
-                        disabled={booking}
-                        value={date}
-                        min={localDay(new Date())}
-                        onChange={(e) => setDate(e.target.value)}
-                        required
-                        className="field"
-                    />
+            <form onSubmit={handleSearch} className="search-form mb-8">
+                <div className="trip-switch" role="group" aria-label="Trip type">
+                    <button
+                        type="button"
+                        disabled={loading || booking}
+                        aria-pressed={tripType === "one-way"}
+                        onClick={() => { setTripType("one-way"); setSearched(false); setOutboundFlightGroups([]); setReturnFlightGroups([]); setSelectedOutboundGroupId(null); setSelectedReturnGroupId(null); }}
+                    >
+                        One‑way
+                    </button>
+                    <button
+                        type="button"
+                        disabled={loading || booking}
+                        aria-pressed={tripType === "round-trip"}
+                        onClick={() => { setTripType("round-trip"); setSearched(false); setOutboundFlightGroups([]); setReturnFlightGroups([]); setSelectedOutboundGroupId(null); setSelectedReturnGroupId(null); }}
+                    >
+                        Round Trip
+                    </button>
                 </div>
-                    <div className={`sm:col-start-2 sm:row-start-2 ${tripType === "one-way" ? "invisible" : ""}`} aria-hidden={tripType === "one-way" ? true : undefined}>
+                <div className="flight-search-fields" data-trip-type={tripType}>
+                    {/* Outbound Flight Inputs */}
+                    <LocationCombobox label="From" kind="airports" value={origin} onChange={setOrigin} placeholder="City or airport code" disabled={booking} />
+                    <LocationCombobox label="To" kind="airports" value={destination} onChange={setDestination} placeholder="Where are you going?" disabled={booking} />
+                    <div>
+                        <label htmlFor="outbound-date" className="label">Departure date:</label>
+                        <input
+                            id="outbound-date"
+                            type="date"
+                            disabled={booking}
+                            value={date}
+                            min={localDay(new Date())}
+                            onChange={(e) => setDate(e.target.value)}
+                            required
+                            className="field"
+                        />
+                    </div>
+                    <div hidden={tripType === "one-way"}>
                         <label htmlFor="return-date" className="label">Return date:</label>
                         <input
                             id="return-date"
@@ -743,10 +789,13 @@ export default function FlightSearchPage() {
                             className="field"
                         />
                     </div>
-                <button type="submit" disabled={loading || booking} className={`min-h-12 self-end px-6 py-3 bg-black text-white rounded hover:bg-gray-800 transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white sm:col-start-2 ${tripType === "one-way" ? "sm:row-start-2" : "sm:row-start-3"}`}>
-                    {loading ? "Searching flights…" : "Search flights"}
-                </button>
-                <p className="muted text-sm sm:col-start-1 sm:row-start-3">Demo flights use a synthetic passenger identifier. No passport details are needed.</p>
+                </div>
+                <div className="flight-search-actions">
+                    <p className="muted text-sm">Demo flights use a synthetic passenger identifier. No passport details are needed.</p>
+                    <button type="submit" disabled={loading || booking} className="button-primary">
+                        {loading ? "Searching flights…" : "Search flights"}
+                    </button>
+                </div>
             </form>
 
             {loading && <p role="status" className="muted">Loading flights...</p>}
@@ -801,7 +850,7 @@ function RoundTripBar({ selection, outboundLegs, booking, error, onBook }: Round
         { title: "Return", flights: selection.flights.slice(outboundLegs) },
     ];
     return <div className="round-trip-bar" role="region" aria-label="Round trip selection">
-        <div className="round-trip-total"><span className="text-sm font-semibold heading">Your round trip</span><strong className="heading">$<span>{selection.total.toFixed(2)}</span> <span className="text-xs muted">USD</span></strong></div>
+        <div className="round-trip-total"><span className="text-sm font-semibold heading">{directions.every(direction => direction.flights.length > 0) ? "Round-trip total" : "Selected fare"}</span><strong className="heading">$<span>{selection.total.toFixed(2)}</span> <span className="text-xs muted">USD</span></strong></div>
         <button type="button" onClick={onBook} disabled={booking || !selection.ready} className="button-primary round-trip-book">{booking ? "Booking…" : "Book Round Trip"}</button>
         <p className="round-trip-note text-xs muted" role="status">{selection.note || "Outbound and return selected."}</p>
         <details className="round-trip-details">
@@ -809,7 +858,7 @@ function RoundTripBar({ selection, outboundLegs, booking, error, onBook }: Round
             <div>{directions.map(({ title, flights }) => <div key={title}>
                 <strong className="heading">{title}</strong>
                 {flights.length ? <>
-                    <p>{flights[0]?.origin?.code} → {flights[flights.length - 1]?.destination?.code} · {flights.map(flight => flight.flightNumber ?? flight.id).join(" + ")}</p>
+                    <p>{routeText(flights)} · {flights.map(flight => flight.flightNumber ?? flight.id).join(" + ")}</p>
                     <p>{flights[0]?.departureTime ? new Date(flights[0].departureTime).toLocaleString("en-US") : "Time unavailable"} · ${flights.reduce((sum, flight) => sum + flight.price, 0).toFixed(2)} USD</p>
                 </> : <p>Choose a flight</p>}
             </div>)}</div>

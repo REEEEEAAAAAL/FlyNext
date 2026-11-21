@@ -1,7 +1,7 @@
 <h1 align="center">FlyNext</h1>
 
 <p align="center">
-  <a href="README.md">English</a> | <a href="README.zh-CN.md">简体中文</a>
+  English | <a href="README.zh-CN.md">简体中文</a>
 </p>
 
 <p align="center">
@@ -32,13 +32,13 @@ The project demonstrates how browser workflows connect to authenticated APIs, tr
 
 | Area | Capabilities |
 | --- | --- |
-| Flights | Search one-way and return itineraries, book and retrieve tickets, view connecting legs, and cancel reservations. |
-| Hotels | Search listings, inspect room types and date-specific availability, create and edit listings, and book or cancel stays. |
+| Flights | Search one-way and round-trip flights, sort by price or total duration, see connection airports before expanding the flight legs, and manage reservations. Routes display the city and airport code where available, such as Toronto (YYZ). |
+| Hotels | Filter stays by destination, dates, rating and nightly price. View room types and rooms available per night on a monthly calendar, then book or cancel a stay. |
 | Itineraries | Build an itinerary from reservations, review its running total, and manage the included bookings. An itinerary supports at most one flight reservation and one hotel reservation. |
-| DEMO checkout | Confirm an itinerary into an order, preserve its confirmation snapshot, and download a PDF receipt with outbound, return, and connecting flight segments when available. No real payment is processed. |
+| DEMO checkout | Review the trip total and confirm a simulated booking. The PDF receipt preserves the confirmation snapshot and lists each direction's connections and flight segments when available. No real payment is processed. |
 | Accounts | Register, sign in, manage a profile and avatar, and maintain a refreshable session. |
 | Notifications | Read a per-account notification feed and unread count. |
-| Hotel owners | Manage owned listings, room types, nightly inventory, and view reservation and availability summaries. Ownership is checked on protected operations. |
+| Hotel owners | Manage owned listings, preview uploaded photos, edit room types and nightly inventory, and review reservation and availability summaries. Ownership is checked on protected operations. |
 
 Responsive workflows support light and dark themes across desktop, tablet, and mobile layouts. Browser coverage includes traveler and owner tasks, keyboard and focus behavior, accessibility scans, and large synthetic hotel listings.
 
@@ -46,7 +46,7 @@ Responsive workflows support light and dark themes across desktop, tablet, and m
 
 | Technology | Use |
 | --- | --- |
-| Node.js 24, Next.js 15.5.28 App Router and React 19.0.9 | Application runtime, server-rendered web application and API Route Handlers. |
+| Node.js 24, Next.js 15.5.29 App Router and React 19.0.9 | Application runtime, server-rendered web application and API Route Handlers. |
 | TypeScript 5 | Strict application, API, and test contracts. |
 | Tailwind CSS 4 | Responsive styling and light/dark presentation. |
 | PostgreSQL and Prisma 6.3.1 | Relational persistence, schema migrations, transactions, and generated client. |
@@ -213,9 +213,9 @@ The maintained documentation has four entry points: this README for architecture
 
 These screenshots use synthetic application data. They are product captures, not evidence of a currently hosted deployment.
 
-| Flight search, desktop | Flight search, mobile | DEMO checkout |
+| Connecting flights, desktop | Connecting flights, mobile | DEMO checkout |
 | --- | --- | --- |
-| ![Flight search with the updated navigation at desktop width](docs/screenshots/ui-flights-1440-light.png) | ![Flight search with the updated navigation at mobile width](docs/screenshots/ui-flights-390-light.png) | ![DEMO checkout confirmation and receipt entry point](docs/screenshots/demo-confirmation.png) |
+| ![Outbound and return flight results with connection airports](docs/screenshots/flight-connections-desktop.png) | ![Mobile flight results showing a connection in Boston](docs/screenshots/flight-connections-mobile.png) | ![Confirmed trip with outbound and return route details and a PDF download](docs/screenshots/demo-confirmation.png) |
 
 ## Limitations and license
 
