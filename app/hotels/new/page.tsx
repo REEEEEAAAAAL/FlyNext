@@ -1,5 +1,7 @@
 "use client";
 
+import PhotoPreviews from "@/app/components/PhotoPreviews";
+
 import HostNavigation from "@/app/components/HostNavigation";
 
 import { loginUrl } from "@/app/lib/return-path";
@@ -200,7 +202,7 @@ export default function CreateHotelPage() {
   return (
     <div className="page-shell page-shell--form card text-black dark:text-zinc-100">
       <HostNavigation />
-      <h1 className="text-3xl font-bold mb-6 heading text-center">
+      <h1 className="text-3xl font-bold mb-6 heading">
         Add a New Hotel
       </h1>
 
@@ -271,7 +273,7 @@ export default function CreateHotelPage() {
               name="logo"
               accept="image/jpeg,image/png,image/webp"
               onChange={handleLogoChange}
-              className="hidden"
+              className="sr-only"
             />
           </label>
           <p className="text-xs text-gray-500 dark:text-zinc-400 mt-1">
@@ -362,44 +364,12 @@ export default function CreateHotelPage() {
               accept="image/jpeg,image/png,image/webp"
               multiple
               onChange={handleImagesChange}
-              className="hidden"
+              className="sr-only"
             />
           </label>
 
-          {/* Display list of selected images with preview URLs and remove option */}
           {selectedImages.length > 0 && (
-            <div className="mt-2 w-full">
-              <ul className="list-disc list-inside text-xs text-gray-500 dark:text-zinc-400 space-y-1">
-                {selectedImages.map((item, index) => (
-                  /*
-                   * Keyed by the preview URL, not the index. With `key={index}`,
-                   * removing the first of two images made React reuse the remaining
-                   * row's DOM while re-pointing it at the second item, so the listed
-                   * filename could disagree with what the × button would remove.
-                   */
-                  <li
-                    key={item.previewUrl}
-                    className="flex items-center justify-between"
-                  >
-                    <a
-                      href={item.previewUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-600 dark:text-blue-400 hover:underline break-all"
-                    >
-                      {item.previewUrl.replace(/^blob:/, "")}
-                    </a>
-                    <button
-                      type="button"
-                      onClick={() => removeImage(index)}
-                      className="text-red-600 dark:text-red-400 ml-2"
-                    >
-                      ×
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <PhotoPreviews photos={selectedImages} onRemove={removeImage} />
           )}
         </div>
 
@@ -407,7 +377,7 @@ export default function CreateHotelPage() {
         <button
           type="submit"
           disabled={submitting}
-          className="w-full py-3 bg-black dark:bg-zinc-700 text-white rounded hover:bg-gray-800 dark:hover:bg-zinc-600 transition-colors"
+          className="button-primary w-full"
         >
           {submitting ? "Creating Hotel..." : "Create Hotel"}
         </button>
@@ -418,7 +388,7 @@ export default function CreateHotelPage() {
         <button
           type="button"
           onClick={() => router.push("/")}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-500 transition-colors"
+          className="button-secondary"
         >
           Return to Home
         </button>

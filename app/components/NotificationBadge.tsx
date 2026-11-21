@@ -175,7 +175,7 @@ export default function NotificationBadge() {
     }, [pathname, fetchNotificationCount]);
 
     return (
-        <Link href="/notifications" className="button-secondary !p-2" aria-label={`Notifications${count ? `, ${count} unread` : ""}`}>
+        <Link href="/notifications" className="header-icon" title="Notifications" aria-label={`Notifications${count ? `, ${count} unread` : ""}`}>
             <div className="relative cursor-pointer">
                 <svg
                     aria-hidden="true"

@@ -4,7 +4,7 @@ The hosted demo is [FlyNext](https://flynext-puce.vercel.app). Production runs o
 
 ## Build and configuration
 
-Use `npm ci` and `npm run build`. Vercel uses `npm run vercel-build`, which generates Prisma Client and builds Next.js without running migrations or seeds. The lockfile pins Next.js 15.5.28, React 19.0.9 and Prisma 6.3.1.
+Use `npm ci` and `npm run build`. Vercel uses `npm run vercel-build`, which generates Prisma Client and builds Next.js without running migrations or seeds. The lockfile pins Next.js 15.5.29, React 19.0.9 and Prisma 6.3.1.
 
 Configure the variables in [`.env.example`](../.env.example) through the host's secret manager. Use a dedicated PostgreSQL database, a least-privilege runtime role and a separate migration role. Keep development, preview, production and disposable CI targets separate. Preview must not inherit production credentials. Supply Cloudinary credentials for image uploads; keep database credentials, signing secrets and API keys out of source control and logs.
 
@@ -25,7 +25,7 @@ FlyNext has eight checked-in migrations in [prisma/migrations](../prisma/migrati
 | `20261018090000_booking_consistency` | Idempotent booking requests, cancellation state and checkout snapshots. |
 | `20261020091000_external_recovery` | Nullable JSONB `BookingRequest.recovery` for external-provider reconciliation. |
 
-These eight migrations are applied to the current development, developer-test, CI-test, preview and production targets. This describes the application schema; the standalone AFS initializes its own seven upstream migrations plus one hardening migration.
+This list describes the application schema. Check the deployed migration history separately for each target. The standalone AFS initializes its own seven upstream migrations plus one hardening migration.
 
 For a release, inspect the exact database identity, role, migration history and pending SQL before authorizing writes. Run with the intended direct migration connection:
 
@@ -41,9 +41,9 @@ Preserve a suitable recovery source before live database changes. Existing insta
 
 1. Review the change and intended host, environment, database and roles.
 2. Run engineering checks described in [Development](DEVELOPMENT.md). Review any pending migration and apply it through the authorized migration process.
-3. Merge the reviewed PR. Vercel's Git integration builds preview branches and deploys `main` to production. Confirm the production deployment is `READY`, its commit matches the merged commit, and the public domain points to it.
+3. Review the engineering check and verify the affected flows in the Vercel Preview before merging. After merging, confirm the production deployment is `READY`, its commit matches the merged commit, and the public domain points to it.
 4. Check `/`, `/flights`, `/hotels`, `/auth/login`, `/api/locations/cities`, `/api/locations/airports` and `/api/hotels`. Check flight search with valid airport codes and a future UTC date: `/api/flights/search?origin=YYZ&destination=LHR&date=YYYY-MM-DD` after substituting a real date.
-5. Verify authenticated booking, cancellation, checkout, receipts and uploads separately with approved synthetic accounts when release scope permits writes. Read-only HTTP checks do not establish these workflows.
+5. Verify authenticated booking, cancellation, checkout, receipts and uploads separately with approved synthetic accounts when release scope permits writes. For flight presentation changes, check a connecting trip in search, reservation details and the PDF receipt. Use the [travel UI checks](DEVELOPMENT.md#travel-ui-checks) for the viewport and interaction cases.
 
 There is no public `/api/health` endpoint. Public catalogue APIs exercise database reads. Docker's internal health probe checks `SELECT 1` and the HTTP front door; it does not run as a Vercel health endpoint. Diagnose failures before changing production. Rollback, migration repair and data operations require their own explicit scope.
 

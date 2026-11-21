@@ -108,12 +108,12 @@ export default function NotificationsPage() {
   };
 
   return (
-    <div className="min-h-screen page-shell page-shell--form text-[var(--text)]">
+    <div className="page-shell page-shell--form records-page">
       <h1 className="text-3xl font-bold mb-6 heading">Notifications</h1>
       {loading && <p role="status" className="muted">Loading notifications...</p>}
       {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
       {!loading && !error && notifications.length === 0 && (
-        <p className="muted">You’re all caught up. Booking updates will appear here.</p>
+        <p className="record-panel muted">You’re all caught up. Booking updates will appear here.</p>
       )}
       <ul className="space-y-4">
         {notifications.map((notif) => (
@@ -126,21 +126,21 @@ export default function NotificationsPage() {
                * relying on a shadow.
                */
               notif.isRead
-                ? "border-gray-300 bg-gray-50 dark:border-white/10 dark:bg-white/[0.03]"
+                ? "border-[var(--line)] bg-[var(--surface)]"
                 : "border-blue-300 bg-blue-50 dark:border-blue-500/40 dark:bg-blue-500/10"
             }`}
           >
             <div>
               <p className="text-gray-800 dark:text-zinc-100">{notif.content}</p>
-              <p className="text-sm text-gray-500 dark:text-zinc-400">
+              <p className="text-sm muted">
                 {new Date(notif.createdAt).toLocaleString("en-US")}
               </p>
             </div>
             {!notif.isRead && (
               <button
                 onClick={() => markAsRead(notif.id)}
-                aria-label={`Mark notification "${notif.content}" as read`}
-                className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors dark:bg-blue-600 dark:hover:bg-blue-500 dark:text-white"
+                aria-label={`Mark as Read: ${notif.content}`}
+                className="button-secondary"
               >
                 Mark as Read
               </button>

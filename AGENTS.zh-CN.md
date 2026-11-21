@@ -4,7 +4,7 @@ FlyNext 是基于 Next.js 的旅行预订作品集应用。用户界面为英语
 
 ## 技术栈
 
-- Node.js 24、Next.js 15.5.28 App Router、React 19.0.9、TypeScript 5 strict、Tailwind CSS 4。
+- Node.js 24、Next.js 15.5.29 App Router、React 19.0.9、TypeScript 5 strict、Tailwind CSS 4。
 - PostgreSQL 与 Prisma 6.3.1。
 - Vitest 用于单元和集成测试，Playwright 用于浏览器端到端测试。
 - 依赖版本以锁文件为准；未经明确要求，不升级或替换依赖。
@@ -63,6 +63,7 @@ FlyNext 是基于 Next.js 的旅行预订作品集应用。用户界面为英语
 ## 核心业务约束
 
 - 酒店入住和退房使用 UTC 日历日期；保持旧数据兼容及库存并发保护。
+- 航班查询参数和预订数据保留机场代码。面向旅客的城市、机场与转机标签使用 `lib/flight-route-display.ts`，并按去程和返程分别归组。
 - 预订写入保留事务和幂等键；取消恢复库存应保持一致且不可重复扣加。
 - 公开酒店和房型响应不得包含客人预订记录。
 - 房主数据必须校验当前用户身份及资源所有权。

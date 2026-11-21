@@ -1,5 +1,9 @@
 "use client";
 
+import FlightRouteSummary from "@/app/components/FlightRouteSummary";
+
+import BookingStatusBadge from "@/app/components/BookingStatusBadge";
+
 import { loginUrl } from "@/app/lib/return-path";
 
 import { formatStayDate } from "@/app/lib/booking-display";
@@ -267,22 +271,18 @@ function CheckoutPageContent() {
         <div role="alert"><p className="text-red-600 dark:text-red-400">{error}</p><button className="button-secondary mt-4" onClick={() => window.location.reload()}>Reload order</button><Link className="button-secondary mt-4 ml-2" href="/itineraries">My trips</Link></div>
       ) : order ? (
         <div className="mb-8">
-          <h2 className="text-2xl font-semibold mb-4 heading">
-            Order Summary (Itinerary #{order.id})
-          </h2>
-          <p className="text-gray-700 dark:text-zinc-200 mb-2">
-            <strong>{order.status === "DRAFT" ? "Total to confirm:" : "Current trip total:"}</strong> ${order.totalPrice.toFixed(2)} USD
-          </p>
-          <p className="text-gray-700 dark:text-zinc-200 mb-2">
-            <strong>Booking Date:</strong>{" "}
-            {new Date(order.bookingDate).toLocaleString("en-US")}
-          </p>
-          <p className="text-gray-700 dark:text-zinc-200 mb-2">
-            <strong>Status:</strong> {order.status}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-xl font-semibold heading">Order Summary</h2>
+            <BookingStatusBadge status={order.status} />
+          </div>
+          <p className="mt-1 text-sm muted">Itinerary #{order.id} · Booked {new Date(order.bookingDate).toLocaleString("en-US")}</p>
+          <div className="mt-5">
+            <p className="stay-price-label">{order.status === "DRAFT" ? "Total to confirm" : "Current trip total"}</p>
+            <p><strong className="text-2xl heading">${order.totalPrice.toFixed(2)}</strong> <span className="text-sm muted">USD</span></p>
+          </div>
           <div className="grid sm:grid-cols-2 gap-3 mt-5">
-            {order.flight && <div className="surface p-4"><p className="eyebrow mb-2">FLIGHT</p><p className="font-semibold">{order.flight.departure?.goAirport} → {order.flight.arrival?.goAirport}</p><p className="text-sm muted">${order.flight.price?.toFixed(2)} USD · {order.flight.status}</p></div>}
-            {order.hotel && <div className="surface p-4"><p className="eyebrow mb-2">STAY</p><p className="font-semibold">{order.hotel.hotel?.name ?? "Hotel reservation"}</p><p className="text-sm muted">{formatStayDate(order.hotel.checkIn)} – {formatStayDate(order.hotel.checkOut)}</p><p className="text-sm muted">${order.hotel.price?.toFixed(2)} USD · {order.hotel.status}</p></div>}
+            {order.flight && <div className="surface p-4"><h3 className="eyebrow mb-2">Flight</h3><FlightRouteSummary departure={order.flight.departure} arrival={order.flight.arrival} /><p className="text-sm muted">${order.flight.price?.toFixed(2)} USD · <BookingStatusBadge status={order.flight.status} /></p></div>}
+            {order.hotel && <div className="surface p-4"><h3 className="eyebrow mb-2">Stay</h3><p className="font-semibold">{order.hotel.hotel?.name ?? "Hotel reservation"}</p><p className="text-sm muted">{formatStayDate(order.hotel.checkIn)} – {formatStayDate(order.hotel.checkOut)}</p><p className="text-sm muted">${order.hotel.price?.toFixed(2)} USD · <BookingStatusBadge status={order.hotel.status} /></p></div>}
           </div>
           {order.status === "CONFIRMED" && <p className="text-xs muted mt-4">The demo receipt preserves the original confirmation amount. The current trip total reflects any later cancellations.</p>}
         </div>
@@ -291,16 +291,16 @@ function CheckoutPageContent() {
       )}
 
       {error && order && <p role="alert" className="mb-4 text-red-600 dark:text-red-400">{error}</p>}
-      {order?.status === "CONFIRMED" && <p role="status" className="surface p-4 mb-4 text-emerald-700 dark:text-emerald-300">Demo booking confirmed. No money was charged. Your receipt is ready.</p>}
-      <form onSubmit={handlePaymentSubmit}>
-        <p className="mb-6 muted">Demo checkout uses a simulated payment method. No money is charged. Do not provide card or passport details.</p>
+      <form onSubmit={handlePaymentSubmit} className={order?.status === "CONFIRMED" ? "checkout-complete surface p-4" : undefined}>
+        {order?.status !== "CONFIRMED" && <p className="mb-6 muted">Demo checkout uses a simulated payment method. No money is charged. Do not provide card or passport details.</p>}
         <button
           type="submit"
           disabled={loading || submitting || !order || order.status !== "DRAFT"}
-          className="w-full py-3 bg-black text-white rounded hover:bg-gray-800 transition-colors dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+          className="button-primary w-full"
         >
           {submitting ? "Confirming..." : order?.status === "CONFIRMED" ? "Demo booking confirmed" : order?.status === "CANCELLED" ? "Itinerary cancelled" : "Confirm Demo Booking"}
         </button>
+        {order?.status === "CONFIRMED" && <p role="status" className="text-sm muted mt-1">No money was charged. Your receipt is ready.</p>}
       </form>
 
       {(invoiceUrl || order?.status === "CONFIRMED") && (
@@ -308,7 +308,7 @@ function CheckoutPageContent() {
           <button
             onClick={handleDownload}
             disabled={downloading}
-            className="inline-block px-6 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors dark:bg-blue-600 dark:hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="button-primary"
           >
             {downloading ? "Preparing receipt..." : "Download demo receipt PDF"}
           </button>

@@ -1,5 +1,7 @@
 "use client";
 
+import BookingStatusBadge from "@/app/components/BookingStatusBadge";
+
 import { loginUrl } from "@/app/lib/return-path";
 
 import EmptyState from "@/app/components/EmptyState";
@@ -130,7 +132,7 @@ export default function UserHotelBookingsPage() {
     }, [router, refreshToken, showError]);
 
     return (
-        <div className="card page-shell text-black dark:text-zinc-100">
+        <div className="page-shell records-page">
             <h1 className="text-3xl font-bold mb-6 heading">
                 Your Hotel Bookings
             </h1>
@@ -146,88 +148,28 @@ export default function UserHotelBookingsPage() {
                         return (
                             <div
                                 key={booking.id}
-                                className="p-6 border border-gray-300 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                                className="record-panel"
                             >
                                 <div className="booking-card-header flex flex-wrap gap-4 justify-between items-start">
                                     <div>
-                                        <h2 className="text-xl font-semibold mb-2">
-                                            Booking #{booking.reference}
-                                        </h2>
-                                        <p className="muted mb-1">
-                                            <span className="font-medium">
-                                                Status:
-                                            </span>{" "}
-                                            <span
-                                                className={`px-2 py-1 rounded text-xs ${
-                                                    booking.status === "CONFIRMED"
-                                                        ? "bg-green-100 text-green-800 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-1 dark:ring-emerald-500/30"
-                                                        : booking.status ===
-                                                          "PENDING"
-                                                        ? "bg-yellow-100 text-yellow-800 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-1 dark:ring-amber-500/30"
-                                                        : "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300 dark:ring-1 dark:ring-red-500/30"
-                                                }`}
-                                            >
-                                                {booking.status}
-                                            </span>
-                                        </p>
-                                        {booking.roomTypeName && (
-                                            <p className="muted mb-1">
-                                                <span className="font-medium">
-                                                    Room Type:
-                                                </span>{" "}
-                                                {booking.roomTypeName}
-                                            </p>
-                                        )}
-                                        <p className="muted mb-1">
-                                            <span className="font-medium">
-                                                Price:
-                                            </span>{" "}
-                                            ${booking.price.toFixed(2)}
-                                            {nights !== null && (
-                                                <span className="muted">
-                                                    {" "}
-                                                    for {nights}{" "}
-                                                    {nights === 1 ? "night" : "nights"}
-                                                </span>
-                                            )}
-                                        </p>
+                                        <h2 className="heading text-xl font-semibold">{booking.hotelName}</h2>
+                                        <p className="muted text-sm mt-1">Booking #{booking.reference}</p>
                                     </div>
-                                    <Link
-                                        href={`/user/hotel-bookings/${booking.id}`}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-500 transition-colors"
-                                    >
-                                        View Details
-                                    </Link>
+                                    <BookingStatusBadge status={booking.status} />
                                 </div>
-
-                                <div className="mt-4">
-                                    <h3 className="text-lg font-semibold heading">
-                                        {booking.hotelName}
-                                    </h3>
-                                    {booking.hotelLocation && (
-                                        <p className="muted text-sm">
-                                            {booking.hotelLocation}
-                                        </p>
-                                    )}
-                                </div>
-
-                                <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="p-3 bg-blue-50 dark:bg-blue-500/10 rounded">
-                                        <h3 className="font-medium text-blue-800 dark:text-blue-300 mb-2">
-                                            Check-In
-                                        </h3>
-                                        <p className="text-gray-700 dark:text-zinc-200">
-                                            {formatStayDate(booking.checkIn)}
-                                        </p>
-                                    </div>
-                                    <div className="p-3 bg-green-50 dark:bg-emerald-500/10 rounded">
-                                        <h3 className="font-medium text-green-800 dark:text-emerald-300 mb-2">
-                                            Check-Out
-                                        </h3>
-                                        <p className="text-gray-700 dark:text-zinc-200">
-                                            {formatStayDate(booking.checkOut)}
-                                        </p>
-                                    </div>
+                                <p className="my-4">{[booking.roomTypeName, booking.hotelLocation].filter(Boolean).join(" · ")}</p>
+                                <dl className="stay-dates">
+                                    <div><dt>Check-in</dt><dd>{formatStayDate(booking.checkIn)}</dd></div>
+                                    <div><dt>Check-out</dt><dd>{formatStayDate(booking.checkOut)}</dd></div>
+                                </dl>
+                                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+                                    <p>
+                                        <strong className="heading text-lg">${booking.price.toFixed(2)}</strong>{" "}
+                                        <span className="text-sm muted">
+                                            USD{nights !== null && ` for ${nights} ${nights === 1 ? "night" : "nights"}`}
+                                        </span>
+                                    </p>
+                                    <Link href={`/user/hotel-bookings/${booking.id}`} className="button-secondary">View Details</Link>
                                 </div>
                             </div>
                         );

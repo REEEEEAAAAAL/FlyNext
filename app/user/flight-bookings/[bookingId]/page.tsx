@@ -1,5 +1,9 @@
 "use client";
 
+import { airportLabel, describeRoute } from "@/lib/flight-route-display";
+
+import BookingStatusBadge from "@/app/components/BookingStatusBadge";
+
 import { loginUrl } from "@/app/lib/return-path";
 
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
@@ -39,6 +43,7 @@ function DirectionPanel({ direction }: { direction: FlightDirection }) {
     const isReturn = direction.kind === "return";
     const connections = direction.legs.length > 1;
 
+    const route = describeRoute(direction.from, direction.to, direction.legs);
     return (
         <div className="border divider p-4 rounded">
             <div className="mb-3 flex items-center gap-2">
@@ -60,29 +65,29 @@ function DirectionPanel({ direction }: { direction: FlightDirection }) {
                     </span>
                 )}
             </div>
-            <dl className="space-y-3 text-sm">
+            <dl className="route-facts">
                 <div>
                     <dt className="font-medium muted">From</dt>
                     <dd className="mt-0.5 text-base font-semibold">
-                        {direction.from}
+                        {route.from}
                     </dd>
                 </div>
                 <div>
                     <dt className="font-medium muted">Departs</dt>
                     <dd className="mt-0.5">{formatLegDate(direction.departDate)}</dd>
                 </div>
-                {direction.stops.length > 0 && (
+                {route.stops.length > 0 && (
                     <div>
                         <dt className="font-medium muted">Via</dt>
                         <dd className="mt-0.5 font-semibold">
-                            {direction.stops.join(" → ")}
+                            {route.stops.join(" → ")}
                         </dd>
                     </div>
                 )}
                 <div>
                     <dt className="font-medium muted">To</dt>
                     <dd className="mt-0.5 text-base font-semibold">
-                        {direction.to}
+                        {route.to}
                     </dd>
                 </div>
                 <div>
@@ -98,7 +103,7 @@ function DirectionPanel({ direction }: { direction: FlightDirection }) {
                         {direction.legs.map((leg, index) => (
                             <li key={`${leg.from}-${leg.to}-${index}`}>
                                 <p className="font-semibold text-gray-800 dark:text-zinc-100">
-                                    {index + 1}. {leg.from} → {leg.to}
+                                    {index + 1}. {airportLabel(leg.from, leg.originCity)} → {airportLabel(leg.to, leg.destinationCity)}
                                 </p>
                                 <p className="muted">
                                     Departs {formatLegDate(leg.departDate)} ·
@@ -376,7 +381,7 @@ export default function FlightBookingDetailsPage() {
     const reference = bookingReference(booking.afsBookingId);
 
     return (
-        <div className="card page-shell text-black dark:text-zinc-100">
+        <div className="page-shell records-page">
             <div className="mb-6">
                 <Link
                     href="/user/flight-bookings"
@@ -391,8 +396,8 @@ export default function FlightBookingDetailsPage() {
             </h1>
 
             <div className="space-y-6">
-                <div className="p-6 border border-gray-300 dark:border-white/10 rounded bg-gray-50 dark:bg-white/5">
-                    <div className="flex justify-between items-start mb-4">
+                <div className="record-panel">
+                    <div className="record-heading">
                         <div>
                             <h2 className="text-xl font-semibold">
                                 Booking #{reference}
@@ -411,17 +416,7 @@ export default function FlightBookingDetailsPage() {
                             </p>
                         </div>
                         <div className="text-right">
-                            <p
-                                className={`text-lg font-semibold ${
-                                    booking.status === "CONFIRMED"
-                                        ? "text-green-600 dark:text-emerald-400"
-                                        : booking.status === "CANCELLED"
-                                        ? "text-red-600 dark:text-red-400"
-                                        : "text-yellow-600 dark:text-amber-400"
-                                }`}
-                            >
-                                {booking.status}
-                            </p>
+                            <BookingStatusBadge status={booking.status} />
                             <p className="text-2xl font-bold">
                                 ${booking.price.toFixed(2)}
                             </p>

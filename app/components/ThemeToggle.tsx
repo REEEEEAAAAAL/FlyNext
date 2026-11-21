@@ -80,7 +80,7 @@ function SystemIcon() {
  * `layout.tsx` has already painted the correct theme by then, so only the icon
  * settles a tick later.
  */
-export default function ThemeToggle({ className = "" }: { className?: string }) {
+export default function ThemeToggle({ className = "header-icon" }: { className?: string }) {
   const { mounted, setTheme, resolvedTheme } = useTheme();
 
   const active: ResolvedTheme = mounted ? resolvedTheme : "light";
@@ -92,7 +92,7 @@ export default function ThemeToggle({ className = "" }: { className?: string }) 
       onClick={() => setTheme(next)}
       aria-label={`Switch to ${LABELS[next]} mode`}
       title={`Switch to ${LABELS[next]} mode`}
-      className={`inline-flex h-10 w-10 items-center justify-center rounded-md border border-white/10 bg-gray-800 text-gray-200 transition-colors hover:bg-gray-700 hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 focus-visible:ring-offset-gray-950 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700 ${className}`}
+      className={className}
     >
       {/* The action, not the state: sun while dark, moon while light. */}
       {mounted ? (

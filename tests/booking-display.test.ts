@@ -23,6 +23,31 @@ import {
 	transferAirports,
 } from "@/app/lib/booking-display";
 import type { FlightLegDto } from "@/types";
+import { airportLabel, reservationRoutes } from "@/lib/flight-route-display";
+
+describe("passenger-facing airport names", () => {
+	it("prefers the recorded city and resolves known codes on older tickets", () => {
+		expect(airportLabel("ABC", "Recorded City")).toBe("Recorded City (ABC)");
+		expect(airportLabel("YYZ")).toBe("Toronto (YYZ)");
+		expect(airportLabel("ZZZ")).toBe("ZZZ");
+		expect(airportLabel(" ")).toBe("Unavailable");
+	});
+
+	it("keeps transfers in order and separates the return from the outbound turnaround", () => {
+		const departure = { goAirport: "YYZ", returnAirport: "CAN" };
+		const arrival = {
+			goAirport: "CAN", returnAirport: "YYZ",
+			goLegs: [{ from: "YYZ", to: "LHR" }, { from: "LHR", to: "HKG" }, { from: "HKG", to: "CAN" }],
+			returnLegs: [{ from: "CAN", to: "ABC", destinationCity: "Transfer City" }, { from: "ABC", to: "YYZ" }],
+		};
+		expect(reservationRoutes(departure, arrival).map(route => route.stops)).toEqual([
+			["London (LHR)", "Hong Kong (HKG)"], ["Transfer City (ABC)"],
+		]);
+		expect(reservationRoutes({ goAirport: "YYZ", returnAirport: " " }, { goAirport: "LHR" })).toMatchObject([
+			{ from: "Toronto (YYZ)", to: "London (LHR)", stops: [] },
+		]);
+	});
+});
 
 /** The single-space sentinel both booking endpoints emit for an absent leg. */
 const ABSENT = " ";

@@ -10,6 +10,8 @@ The booking overlay preserves the existing endpoint paths and JSON fields. It ad
 
 Responses advertise `x-afs-booking-protocol: 1`. FlyNext requires that marker before automatically replaying an uncertain remote operation. Its separate recovery worker owns cross-service reconciliation; neither service assumes a shared database transaction.
 
+FlyNext formats the provider's airport city and code for search results and saved reservations. It derives transfers from ordered legs within each direction and uses the reference airport catalogue for legacy records with only airport codes. The version in this guide refers to the standalone overlay lockfile.
+
 Dependency updates must regenerate the checked-in lockfile, review the resulting tree, rerun `npm ci` and build, and repeat the Docker business, concurrency and recovery checks. Do not patch only a running container or use forced audit upgrades. See [Docker operations and fixtures](../docs/DOCKER.md).
 
 Security references:

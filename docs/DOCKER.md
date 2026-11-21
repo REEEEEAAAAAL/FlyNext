@@ -78,6 +78,8 @@ The explicit `reset` operation supplies scoped reset consent to the guarded seed
 
 ## Container business smoke and persistence verification
 
+For changes to search results, the hotel availability calendar, or receipt presentation, run the [travel UI checks](DEVELOPMENT.md#travel-ui-checks) as well.
+
 This Docker-only entry point verifies the dedicated target before writing synthetic data through the real container API. It checks page responses, registration/login/refresh/logout, built-in AFS search/booking, hotel availability, booking idempotency, itinerary creation, DEMO checkout, a parseable PDF, cancellation and exact nightly inventory restoration. It leaves its synthetic records for inspection. It is separate from the existing integration test runner.
 
 ```sh

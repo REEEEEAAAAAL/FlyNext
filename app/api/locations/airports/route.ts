@@ -26,6 +26,7 @@ export const GET = withRoute(async (request) => {
 			],
 		},
 		orderBy: { name: "asc" },
+		include: { city: { select: { name: true } } },
 		// Top 10 suggestions: enough for a dropdown, small enough to stay cheap.
 		take: 10,
 	});

@@ -147,13 +147,14 @@ export type FlightLegJson = {
 /**
  * One flight of a direction, as the booking-history endpoints serialise it.
  *
- * Every field is a string, like {@link FlightLegDto}: an absent value becomes the
- * single-space sentinel `" "`, so a page can render a partially known leg without
- * testing for `null` and `undefined` separately.
+ * The four original fields retain their single-space sentinel for absent values.
+ * City names are included when the provider recorded them with the leg.
  */
 export interface FlightSegmentDto {
 	from: string;
 	to: string;
+	originCity?: string;
+	destinationCity?: string;
 	departDate: string;
 	arriveDate: string;
 }
@@ -353,6 +354,7 @@ export interface CityDto {
 
 /** `GET /api/locations/airports` — one list item. */
 export interface AirportDto {
+	city: { name: string } | null;
 	id: number;
 	externalId: string;
 	code: string;

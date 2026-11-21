@@ -1,5 +1,9 @@
 "use client";
 
+import { describeRoute } from "@/lib/flight-route-display";
+
+import BookingStatusBadge from "@/app/components/BookingStatusBadge";
+
 import { loginUrl } from "@/app/lib/return-path";
 
 import EmptyState from "@/app/components/EmptyState";
@@ -27,17 +31,6 @@ interface FlightBooking {
     departure: FlightDirectionInput;
     arrival: FlightDirectionInput;
     createdAt: string;
-}
-
-/** Status pill colours, shared by this page's chips. */
-function statusChipClass(status: string): string {
-    if (status === "CONFIRMED") {
-        return "bg-green-100 text-green-800 dark:bg-emerald-500/15 dark:text-emerald-300 dark:ring-1 dark:ring-emerald-500/30";
-    }
-    if (status === "PENDING") {
-        return "bg-yellow-100 text-yellow-800 dark:bg-amber-500/15 dark:text-amber-300 dark:ring-1 dark:ring-amber-500/30";
-    }
-    return "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300 dark:ring-1 dark:ring-red-500/30";
 }
 
 /**
@@ -69,34 +62,35 @@ function DirectionCard({
             ? "text-blue-800 dark:text-blue-300"
             : "text-emerald-800 dark:text-emerald-300";
 
+    const route = describeRoute(direction.from, direction.to, direction.legs);
     return (
         <div className={`rounded-lg border p-4 ${palette}`}>
             <h3 className={`mb-3 font-semibold ${title}`}>
                 {tone === "outbound" ? "Outbound" : "Return"}
             </h3>
-            <dl className="space-y-2 text-sm text-gray-700 dark:text-zinc-200">
-                <div className="flex gap-2">
-                    <dt className="w-14 shrink-0 font-medium muted">From</dt>
-                    <dd className="font-semibold">{direction.from}</dd>
+            <dl className="route-facts">
+                <div>
+                    <dt className="font-medium muted">From</dt>
+                    <dd className="font-semibold">{route.from}</dd>
                 </div>
-                <div className="flex gap-2">
-                    <dt className="w-14 shrink-0 font-medium muted">Departs</dt>
+                <div>
+                    <dt className="font-medium muted">Departs</dt>
                     <dd>{formatLegDate(direction.departDate)}</dd>
                 </div>
-                {direction.stops.length > 0 && (
-                    <div className="flex gap-2">
-                        <dt className="w-14 shrink-0 font-medium muted">Via</dt>
+                {route.stops.length > 0 && (
+                    <div>
+                        <dt className="font-medium muted">Via</dt>
                         <dd className="font-semibold">
-                            {direction.stops.join(" → ")}
+                            {route.stops.join(" → ")}
                         </dd>
                     </div>
                 )}
-                <div className="flex gap-2">
-                    <dt className="w-14 shrink-0 font-medium muted">To</dt>
-                    <dd className="font-semibold">{direction.to}</dd>
+                <div>
+                    <dt className="font-medium muted">To</dt>
+                    <dd className="font-semibold">{route.to}</dd>
                 </div>
-                <div className="flex gap-2">
-                    <dt className="w-14 shrink-0 font-medium muted">Arrives</dt>
+                <div>
+                    <dt className="font-medium muted">Arrives</dt>
                     <dd>{formatLegDate(direction.arriveDate)}</dd>
                 </div>
             </dl>
@@ -206,7 +200,7 @@ export default function UserFlightBookingsPage() {
     }, [router, refreshToken, showError]);
 
     return (
-        <div className="card page-shell text-black dark:text-zinc-100">
+        <div className="page-shell records-page">
             <h1 className="text-3xl font-bold mb-6 heading">
                 Your Flight Bookings
             </h1>
@@ -230,7 +224,7 @@ export default function UserFlightBookingsPage() {
                         return (
                             <div
                                 key={booking.id}
-                                className="p-6 border border-gray-300 dark:border-white/10 rounded-lg bg-gray-50 dark:bg-white/5 hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
+                                className="record-panel"
                             >
                                 <div className="booking-card-header flex flex-wrap gap-4 justify-between items-start">
                                     <div>
@@ -248,13 +242,7 @@ export default function UserFlightBookingsPage() {
                                             <span className="font-medium">
                                                 Status:
                                             </span>{" "}
-                                            <span
-                                                className={`px-2 py-1 rounded text-xs ${statusChipClass(
-                                                    booking.status
-                                                )}`}
-                                            >
-                                                {booking.status}
-                                            </span>
+                                            <BookingStatusBadge status={booking.status} />
                                         </p>
                                         <p className="muted mb-1">
                                             <span className="font-medium">
@@ -271,7 +259,7 @@ export default function UserFlightBookingsPage() {
                                     </div>
                                     <Link
                                         href={`/user/flight-bookings/${booking.id}`}
-                                        className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-500 transition-colors"
+                                        className="button-secondary"
                                     >
                                         View Details
                                     </Link>

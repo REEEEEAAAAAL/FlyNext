@@ -1,5 +1,7 @@
 "use client";
 
+import { airportLabel } from "@/lib/flight-route-display";
+
 import { useEffect, useId, useRef, useState } from "react";
 import { sessionFetch } from "@/app/lib/session";
 
@@ -49,8 +51,9 @@ export default function LocationCombobox({ label, kind, value, onChange, placeho
     generation.current += 1; onChange(kind === "airports" ? option.code ?? option.name : option.name);
     setQuery(""); setOptions([]); setOpen(false); setActive(-1);
   };
-  return <div className="relative" onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
+  return <div onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setOpen(false); }}>
     <label className="label" htmlFor={id}>{label}</label>
+    <div className="relative">
     <input id={id} className="field" role="combobox" autoComplete="off" required={required} disabled={disabled} value={value} placeholder={placeholder}
       aria-autocomplete="list" aria-expanded={open && options.length > 0} aria-controls={`${id}-options`}
       aria-activedescendant={open && active >= 0 ? `${id}-option-${active}` : undefined} aria-describedby={`${id}-status`}
@@ -66,9 +69,10 @@ export default function LocationCombobox({ label, kind, value, onChange, placeho
     <ul ref={list} id={`${id}-options`} role="listbox" aria-label={`${label} suggestions`} hidden={!open || !options.length} className="combobox-options floating">
       {options.map((option, index) => <li id={`${id}-option-${index}`} key={option.id} role="option" aria-selected={active === index}
         onMouseDown={(event) => event.preventDefault()} onClick={() => choose(option)} onPointerMove={(event) => { if (event.pointerType === "mouse") setActive(index); }}>
-        {option.code ? `${option.code} · ` : ""}{option.name}{option.country ? ` (${option.country})` : ""}
+        {option.code ? airportLabel(option.code, typeof option.city === "string" ? option.city : option.city?.name) + " · " : ""}{option.name}{option.country ? ` (${option.country})` : ""}
       </li>)}
     </ul>
+    </div>
     <span id={`${id}-status`} className="combobox-status text-xs muted" role="status">{loading ? "Finding locations…" : error || (open && requested && query.length >= 2 && !options.length ? "No suggestions" : "")}</span>
   </div>;
 }

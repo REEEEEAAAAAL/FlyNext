@@ -1,5 +1,9 @@
 "use client";
 
+import BookingStatusBadge from "@/app/components/BookingStatusBadge";
+
+import PhotoPreviews from "@/app/components/PhotoPreviews";
+
 import HostNavigation from "@/app/components/HostNavigation";
 
 import { loginUrl } from "@/app/lib/return-path";
@@ -21,6 +25,7 @@ import {
   Title,
   Tooltip,
   Legend,
+  type Plugin,
 } from "chart.js";
 import { useTheme } from "@/app/context/ThemeContext";
 import { clearAccessToken } from "@/app/lib/session";
@@ -53,6 +58,43 @@ function formatChartRgb(token: string, fallback: string): string {
   return `rgba(${r}, ${g}, ${b}, ${Number.isFinite(alpha) ? alpha : 1})`;
 }
 
+const CHART_TOOLTIP_RADIUS = 8;
+
+/**
+ * Paints the shared highlight and shade onto the canvas before Chart.js draws
+ * its tooltip. Clipping to the outside leaves the tooltip text and fill to
+ * Chart.js, including during its fade animation.
+ */
+const tooltipShadow: Plugin<"line"> = {
+  id: "tooltipShadow",
+  beforeTooltipDraw(chart, { tooltip }) {
+    const { ctx, currentDevicePixelRatio: scale } = chart;
+    const styles = getComputedStyle(chart.canvas.ownerDocument.documentElement);
+    const outline = new Path2D();
+    outline.roundRect(tooltip.x, tooltip.y, tooltip.width, tooltip.height, CHART_TOOLTIP_RADIUS);
+
+    const outside = new Path2D(outline);
+    outside.rect(0, 0, chart.width, chart.height);
+    ctx.save();
+    ctx.clip(outside, "evenodd");
+    ctx.globalAlpha = tooltip.opacity;
+    ctx.fillStyle = "#000"; // The clip keeps the fill itself off the canvas.
+
+    ctx.shadowColor = formatChartRgb(styles.getPropertyValue("--overlay-highlight"), "transparent");
+    ctx.shadowOffsetX = -2 * scale;
+    ctx.shadowOffsetY = -2 * scale;
+    ctx.shadowBlur = 5 * scale;
+    ctx.fill(outline);
+
+    ctx.shadowColor = formatChartRgb(styles.getPropertyValue("--overlay-shade"), "transparent");
+    ctx.shadowOffsetX = 2 * scale;
+    ctx.shadowOffsetY = 4 * scale;
+    ctx.shadowBlur = 10 * scale;
+    ctx.fill(outline);
+    ctx.restore();
+  },
+};
+
 /**
  * Resolves the `--chart-*` design tokens from `app/globals.css` into the
  * concrete colours Chart.js needs.
@@ -72,10 +114,10 @@ function readChartColors() {
     title: "rgba(17, 24, 39, 1)",
     legend: "rgba(55, 65, 81, 1)",
     line: "rgba(13, 148, 136, 1)",
-    tooltipBg: "rgba(255, 255, 255, 0.98)",
+    tooltipBg: "rgba(255, 255, 255, 1)",
     tooltipTitle: "rgba(17, 24, 39, 1)",
     tooltipBody: "rgba(55, 65, 81, 1)",
-    tooltipBorder: "rgba(229, 231, 235, 1)",
+    tooltipBorder: "rgba(220, 229, 238, 1)",
   };
 
   // Server render and the first client render have no document yet, and an
@@ -724,50 +766,11 @@ export default function EditRoomTypePage() {
                                 accept="image/jpeg,image/png,image/webp"
                                 multiple
                                 onChange={handleImagesChange}
-                                className="hidden"
+                                className="sr-only"
                             />
                         </label>
-                        {/* Display image gallery or a default message if none */}
                         {selectedImages.length > 0 ? (
-                            <div className="mt-2 w-full overflow-x-scroll">
-                                <div className="flex flex-nowrap space-x-4">
-                                    {selectedImages.map((item) => (
-                                        <div
-                                            key={item.previewUrl}
-                                            className="relative flex-shrink-0"
-                                        >
-                                            <img
-                                                src={item.previewUrl}
-                                                alt={`Image of ${formData.name}`}
-                                                className="h-32 w-auto object-contain"
-                                            />
-                                            <button
-                                                type="button"
-                                                onClick={() =>
-                                                    removeImage(item.previewUrl)
-                                                }
-                                                className="absolute top-0 right-0 bg-red-600 text-white rounded-full p-1 hover:bg-red-700 dark:hover:bg-red-500"
-                                                title="Remove image"
-                                            >
-                                                <svg
-                                                    xmlns="http://www.w3.org/2000/svg"
-                                                    className="h-4 w-4"
-                                                    fill="none"
-                                                    viewBox="0 0 24 24"
-                                                    stroke="currentColor"
-                                                >
-                                                    <path
-                                                        strokeLinecap="round"
-                                                        strokeLinejoin="round"
-                                                        strokeWidth={2}
-                                                        d="M6 18L18 6M6 6l12 12"
-                                                    />
-                                                </svg>
-                                            </button>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
+                          <PhotoPreviews photos={selectedImages} onRemove={(index) => removeImage(selectedImages[index].previewUrl)} />
                         ) : (
                             <p className="text-gray-700 dark:text-zinc-200 mt-2">
                                 The owner has not provided any images for this
@@ -779,7 +782,7 @@ export default function EditRoomTypePage() {
                     <button
                         type="submit"
                         disabled={submitting}
-                        className="w-full py-3 bg-black dark:bg-zinc-700 text-white rounded hover:bg-gray-800 dark:hover:bg-zinc-600 transition-colors"
+                        className="button-primary w-full"
                     >
                         {submitting
                             ? "Updating Room Type..."
@@ -792,59 +795,57 @@ export default function EditRoomTypePage() {
             )}
 
             {/* Availability Records Section */}
-            <div className="mt-8">
-                <div className="availability-filters mb-4">
-                    <h2 className="text-2xl font-bold heading">
-                        Availability Records
-                    </h2>
-                    <form
-                        onSubmit={handleAvailabilityFilter}
+            <section className="inventory-section">
+                <h2 className="text-2xl font-bold heading">
+                    Availability Records
+                </h2>
+                <form className="availability-filters" onSubmit={handleAvailabilityFilter}>
+                    <div>
+                        <label htmlFor="field-5" className="label mb-1">
+                            Check-In:
+                        </label>
+                        <input id="field-5"
+                            type="date"
+                            value={checkIn}
+                            onChange={(e) => setCheckIn(e.target.value)}
+                            className="field"
+                        />
+                    </div>
+                    <div>
+                        <label htmlFor="field-6" className="label mb-1">
+                            Check-Out:
+                        </label>
+                        <input id="field-6"
+                            type="date"
+                            value={checkOut}
+                            onChange={(e) => setCheckOut(e.target.value)}
+                            className="field"
+                        />
+                    </div>
+                    <button
+                        type="submit"
+                        className="button-secondary"
                     >
-                        <div>
-                            <label htmlFor="field-5" className="label mb-1">
-                                Check-In:
-                            </label>
-                            <input id="field-5"
-                                type="date"
-                                value={checkIn}
-                                onChange={(e) => setCheckIn(e.target.value)}
-                                className="field"
-                            />
-                        </div>
-                        <div>
-                            <label htmlFor="field-6" className="label mb-1">
-                                Check-Out:
-                            </label>
-                            <input id="field-6"
-                                type="date"
-                                value={checkOut}
-                                onChange={(e) => setCheckOut(e.target.value)}
-                                className="field"
-                            />
-                        </div>
-                        <button
-                            type="submit"
-                            className="bg-black dark:bg-zinc-700 text-white px-4 py-2 rounded hover:bg-gray-800 dark:hover:bg-zinc-600 transition-colors"
-                        >
-                            Filter
-                        </button>
-                    </form>
-                </div>
+                        Filter
+                    </button>
+                </form>
 
                 {loading && <p>Loading availability records...</p>}
                 {availabilityRecords.length === 0 && !loading && (
                     <p>No availability records found.</p>
                 )}
                 {availabilityRecords.length > 0 && (
-                    <div className="mt-4">
+                    <div className="inventory-chart">
                         <Line
+                            plugins={[tooltipShadow]}
+                            aria-label="Rooms available by date. Exact counts follow in the availability text view."
                             data={{
                                 labels: availabilityRecords.map((record) =>
                                     new Date(record.date).toLocaleDateString("en-US", { timeZone: "UTC" })
                                 ),
                                 datasets: [
                                     {
-                                        label: "Availability",
+                                        label: "Rooms available",
                                         data: availabilityRecords.map(
                                             (record) => record.availability
                                         ),
@@ -852,12 +853,15 @@ export default function EditRoomTypePage() {
                                         borderColor: chartColors.line,
                                         pointBackgroundColor: chartColors.line,
                                         pointBorderColor: chartColors.line,
+                                        pointRadius: availabilityRecords.length > 20 ? 1 : 3,
+                                        pointHitRadius: 8,
                                         tension: 0.1,
                                     },
                                 ],
                             }}
                             options={{
                                 responsive: true,
+                                maintainAspectRatio: false,
                                 /*
                                  * Chart.js paints into a <canvas>, so none of
                                  * this can be a Tailwind class: without an
@@ -868,7 +872,9 @@ export default function EditRoomTypePage() {
                                 color: chartColors.tick,
                                 plugins: {
                                     legend: {
-                                        labels: { color: chartColors.legend },
+                                        position: "top",
+                                        align: "start",
+                                        labels: { color: chartColors.legend, boxWidth: 16, boxHeight: 2 },
                                     },
                                     title: {
                                         display: false,
@@ -880,6 +886,7 @@ export default function EditRoomTypePage() {
                                         bodyColor: chartColors.tooltipBody,
                                         borderColor: chartColors.tooltipBorder,
                                         borderWidth: 1,
+                                        cornerRadius: CHART_TOOLTIP_RADIUS,
                                         displayColors: false,
                                     },
                                 },
@@ -887,7 +894,13 @@ export default function EditRoomTypePage() {
                                     x: {
                                         grid: { color: chartColors.grid },
                                         border: { color: chartColors.grid },
-                                        ticks: { color: chartColors.tick },
+                                        ticks: {
+                                            color: chartColors.tick,
+                                            maxTicksLimit: 6,
+                                            maxRotation: 0,
+                                            callback: (_, index) => new Date(availabilityRecords[index].date)
+                                                .toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" }),
+                                        },
                                     },
                                     y: {
                                         beginAtZero: true,
@@ -903,16 +916,17 @@ export default function EditRoomTypePage() {
                         />
                     </div>
                 )}
-            </div>
+                <details className="inventory-text"><summary className="font-semibold cursor-pointer">Availability data (text view)</summary><div className="max-h-64 overflow-y-auto mt-3"><ul className="text-sm space-y-2">{availabilityRecords.map((record) => <li key={formatDate(new Date(record.date))}>{formatDate(new Date(record.date))}: {record.availability} of {formData.currentAvailability} rooms available</li>)}</ul></div></details>
+            </section>
 
             {/* Month-by-Month Calendar View with Year Navigation */}
-            <div className="mt-8">
+            <section className="inventory-section">
                 <h2 className="text-2xl font-bold mb-4 heading">
                     Booking Calendar
                 </h2>
-                <div className="calendar-controls flex justify-between items-center mb-2">
+                <div className="calendar-controls">
                     <button
-                        className="px-2 py-1 bg-gray-300 rounded dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
+                        className="button-secondary"
                         onClick={() =>
                             setCurrentMonth(
                                 new Date(Date.UTC(currentMonth.getUTCFullYear() - 1, currentMonth.getUTCMonth(), 1))
@@ -922,7 +936,7 @@ export default function EditRoomTypePage() {
                         Prev Year
                     </button>
                     <button
-                        className="px-2 py-1 bg-gray-300 rounded dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
+                        className="button-secondary"
                         onClick={() =>
                             setCurrentMonth(
                                 new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() - 1, 1))
@@ -939,7 +953,7 @@ export default function EditRoomTypePage() {
                         })}
                     </div>
                     <button
-                        className="px-2 py-1 bg-gray-300 rounded dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
+                        className="button-secondary"
                         onClick={() =>
                             setCurrentMonth(
                                 new Date(Date.UTC(currentMonth.getUTCFullYear(), currentMonth.getUTCMonth() + 1, 1))
@@ -949,7 +963,7 @@ export default function EditRoomTypePage() {
                         Next Month
                     </button>
                     <button
-                        className="px-2 py-1 bg-gray-300 rounded dark:bg-zinc-700 dark:text-zinc-100 dark:hover:bg-zinc-600"
+                        className="button-secondary"
                         onClick={() =>
                             setCurrentMonth(
                                 new Date(Date.UTC(currentMonth.getUTCFullYear() + 1, currentMonth.getUTCMonth(), 1))
@@ -994,7 +1008,7 @@ export default function EditRoomTypePage() {
                                 <button
                                     type="button"
                                     disabled={!record}
-                                    aria-label={`${formatted}: ${record ? `${record.availability} of ${formData.currentAvailability} rooms available` : "No availability record"}`}
+                                    title={`${formatted}: ${record ? `${record.availability} of ${formData.currentAvailability} rooms available` : "No availability record"}`}
                                     key={day}
                                     className={`calendar-cell border rounded text-center dark:border-white/15 ${
                                         record
@@ -1021,10 +1035,10 @@ export default function EditRoomTypePage() {
                                     <div className="font-semibold">{day}</div>
                                     {record ? (
                                         <div className="text-xs">
-                                            {record.availability}<span className="hidden sm:inline"> available</span>
+                                            {record.availability}<span className="sr-only sm:not-sr-only"> available</span>
                                         </div>
                                     ) : (
-                                        <div className="text-xs" aria-hidden="true">—</div>
+                                        <div className="text-xs"><span aria-hidden="true">—</span><span className="sr-only">No availability record</span></div>
                                     )}
                                 </button>
                             );
@@ -1032,9 +1046,8 @@ export default function EditRoomTypePage() {
                         return cells;
                     })()}
                 </div>
-            </div>
+            </section>
 
-            <details className="surface p-4 mt-6"><summary className="font-semibold cursor-pointer">Availability data (text view)</summary><div className="max-h-64 overflow-y-auto mt-3"><ul className="text-sm space-y-2">{availabilityRecords.map((record) => <li key={formatDate(new Date(record.date))}>{formatDate(new Date(record.date))}: {record.availability} of {formData.currentAvailability} rooms available</li>)}</ul></div></details>
             {/* Reservations Section */}
             <div className="mt-8">
                 <h2 className="text-2xl font-bold mb-4 heading">Reservations</h2>
@@ -1071,7 +1084,7 @@ export default function EditRoomTypePage() {
                                     <strong>Price:</strong> ${resv.price}
                                 </p>
                                 <p>
-                                    <strong>Status:</strong> {resv.status}
+                                    <strong>Status:</strong> <BookingStatusBadge status={resv.status} />
                                 </p>
                             </div>
                             {resv.status !== "CANCELLED" && (
@@ -1118,7 +1131,7 @@ export default function EditRoomTypePage() {
                 <button
                     type="button"
                     onClick={() => router.back()}
-                    className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 dark:hover:bg-blue-500 transition-colors"
+                    className="button-secondary"
                 >
                     Back
                 </button>
