@@ -1,7 +1,6 @@
 "use client";
 
 import { reservationRoutes } from "@/lib/flight-route-display";
-import FlightRouteSummary from "@/app/components/FlightRouteSummary";
 
 import { loginUrl } from "@/app/lib/return-path";
 
@@ -11,14 +10,14 @@ import Link from "next/link";
 import { bookingRequest } from "@/app/lib/booking-request";
 import { getAccessToken, sessionFetch } from "@/app/lib/session";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import type { ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import type { FlightBookingListItem, HotelBookingListItem } from "@/types";
 import { clearAccessToken } from "@/app/lib/session";
 import {
 	bookingReference,
 	hotelReference,
-	hasLegValue,
 	stayNights,
 	formatStayDate,
 } from "@/app/lib/booking-display";
@@ -39,47 +38,120 @@ function formatDay(value: Date | string | null | undefined): string {
   return Number.isNaN(parsed.getTime()) ? "N/A" : parsed.toLocaleDateString("en-US");
 }
 
-/**
- * Everything a traveller needs to recognise a flight in the dropdown.
- *
- * A `<select>` renders one line of text per option, so the label has to earn its
- * characters. It leads with the booking reference — the handle that appears on
- * the traveller's own booking page, in the confirmation email and on anything
- * they would read out to support — then the route, then the dates. The outbound
- * date alone is not enough to tell two bookings apart for the same route, so the
- * return date is included whenever the trip has one, and the price is a further
- * tie-breaker between two bookings of the same itinerary.
- */
-function flightLabel(booking: FlightBookingListItem): string {
-  const route = reservationRoutes(booking.departure, booking.arrival).map(direction =>
-    `${direction.label}: ${direction.from} → ${direction.to}` +
-    (direction.stops.length ? " via " + direction.stops.join(" → ") : "")
-  ).join(" · ");
-  const outbound = `out ${formatDay(booking.departure?.goDate)}`;
-  const inbound = hasLegValue(booking.departure?.returnDate)
-    ? `, back ${formatDay(booking.departure?.returnDate)}`
-    : ", one-way";
+interface ReservationOption {
+  id: number;
+  reference: string;
+  price: number;
+  description: ReactNode;
+}
+
+/** Dates and transfers stay with their direction, including for legacy bookings. */
+function flightOption(booking: FlightBookingListItem): ReservationOption {
+  return {
+    id: booking.id,
+    reference: bookingReference(booking.afsBookingId),
+    price: booking.price,
+    description: reservationRoutes(booking.departure, booking.arrival).map(direction => (
+      <span className="reservation-option-detail" key={direction.label}>
+        <span className="reservation-option-meta">{direction.label} · {formatDay(direction.departDate)}</span>
+        {" "}{direction.from} → {direction.to}
+        {direction.stops.length > 0 && (
+          <span className="muted"> via {direction.stops.join(" → ")}</span>
+        )}
+      </span>
+    )),
+  };
+}
+
+function hotelOption(booking: HotelBookingListItem): ReservationOption {
+  const nights = stayNights(booking.period?.checkIn, booking.period?.checkOut);
+  const duration = nights === null ? "" : ` · ${nights} ${nights === 1 ? "night" : "nights"}`;
+  return {
+    id: booking.id,
+    reference: hotelReference(booking.id),
+    price: booking.totalPrice,
+    description: (
+      <span className="reservation-option-detail">
+        {booking.hotel.name}
+        {booking.roomType?.name && <span className="muted"> · {booking.roomType.name}</span>}
+        <span className="reservation-option-meta">
+          {" "}{formatStayDate(booking.period?.checkIn)} → {formatStayDate(booking.period?.checkOut)}{duration}
+        </span>
+      </span>
+    ),
+  };
+}
+
+function ReservationOptionContent({ option }: { option: ReservationOption }) {
   return (
-    `#${bookingReference(booking.afsBookingId)} — ${route} — ` +
-    `${outbound}${inbound} — $${booking.price.toFixed(2)}`
+    <span className="reservation-option-content">
+      <span className="reservation-option-header">
+        <span>#{option.reference}</span>{" "}
+        <span className="reservation-option-price">${option.price.toFixed(2)}</span>
+      </span>
+      {option.description}
+    </span>
   );
 }
 
 /**
- * The same, for a stay: which hotel and room, the nights, and the price.
- *
- * The reference leads here too. Two stays at the same hotel are otherwise
- * indistinguishable, and "which of these two identical rows is the one I just
- * booked" is the question this list exists to answer.
+ * An inline disclosure keeps long options within the form across browsers.
+ * Native radios preserve arrow-key selection and allow clearing either reservation.
  */
-function hotelLabel(booking: HotelBookingListItem): string {
-  const room = booking.roomType?.name ? `, ${booking.roomType.name}` : "";
-  const nights = stayNights(booking.period?.checkIn, booking.period?.checkOut);
-  const duration = nights === null ? "" : ` (${nights} ${nights === 1 ? "night" : "nights"})`;
+function ReservationPicker({ kind, options, selectedId, onSelect }: {
+  kind: "flight" | "hotel";
+  options: ReservationOption[];
+  selectedId: number | "";
+  onSelect: (id: number | "") => void;
+}) {
+  const picker = useRef<HTMLDetailsElement>(null);
+  const trigger = useRef<HTMLElement>(null);
+  const selected = options.find(option => option.id === selectedId);
+
+  function confirmSelection(id: number | "") {
+    onSelect(id);
+    if (picker.current) picker.current.open = false;
+    trigger.current?.focus();
+  }
+
   return (
-    `#${hotelReference(booking.id)} — ${booking.hotel.name}${room}, ` +
-    `${formatStayDate(booking.period?.checkIn)} → ${formatStayDate(booking.period?.checkOut)}` +
-    `${duration} — $${booking.totalPrice.toFixed(2)}`
+    <details ref={picker} className="reservation-picker" name="itinerary-reservations">
+      <summary ref={trigger} className="field reservation-picker-trigger">
+        {selected ? (
+          <ReservationOptionContent option={selected} />
+        ) : (
+          <span className="muted">Select a {kind} booking</span>
+        )}
+      </summary>
+      <fieldset className="reservation-picker-options">
+        <legend className="sr-only">Select a {kind} booking</legend>
+        {[null, ...options].map(option => {
+          const id = option?.id ?? "";
+          return (
+            <label className="reservation-option" key={id}>
+              <input
+                type="radio"
+                name={`${kind}ReservationId`}
+                value={id}
+                checked={selectedId === id}
+                onChange={() => onSelect(id)}
+                onClick={event => {
+                  // Arrow keys also generate a radio click. Keep the list open during navigation.
+                  if (event.detail > 0) confirmSelection(id);
+                }}
+                onKeyDown={event => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    confirmSelection(id);
+                  }
+                }}
+              />
+              {option ? <ReservationOptionContent option={option} /> : <span>No {kind} booking</span>}
+            </label>
+          );
+        })}
+      </fieldset>
+    </details>
   );
 }
 
@@ -275,7 +347,6 @@ export default function CreateItineraryPage() {
     }
   };
 
-  const selectedFlight = flightBookings.find(booking => booking.id === selectedFlightId);
   return (
     <div className="page-shell page-shell--form card text-[var(--text)]">
       <BookingSteps current="plan" />
@@ -289,55 +360,29 @@ export default function CreateItineraryPage() {
           Select Flight Reservation
         </h2>
         {flightBookings.length > 0 ? (
-          <select
-            aria-label="Select a Flight Booking"
-            value={selectedFlightId}
-            /*
-             * `Number("")` is `0`, not `""`. Coercing unconditionally made the
-             * placeholder store `0`, so the guard in `handleCreateItinerary` (which
-             * tests `=== ""`) never fired and the request carried
-             * `flightReservationId: 0` — rejected by the API with a raw
-             * "must be a positive integer" instead of the intended prompt.
-             */
-            onChange={(e) =>
-              setSelectedFlightId(e.target.value === "" ? "" : Number(e.target.value))
-            }
-            className="field"
-          >
-            <option value="">-- Select a Flight Booking --</option>
-            {flightBookings.map((booking) => (
-              <option key={booking.id} value={booking.id}>
-                {flightLabel(booking)}
-              </option>
-            ))}
-          </select>
+          <ReservationPicker
+            kind="flight"
+            options={flightBookings.map(flightOption)}
+            selectedId={selectedFlightId}
+            onSelect={setSelectedFlightId}
+          />
         ) : (
           !loading && (
             <p className="muted">No unlinked flight bookings available. <Link className="text-blue-600 dark:text-blue-300 underline" href="/flights">Find a flight</Link></p>
           )
         )}
-        {selectedFlight && <div className="mt-3"><FlightRouteSummary departure={selectedFlight.departure} arrival={selectedFlight.arrival} /></div>}
       </div>
       <div className="plan-choice">
         <h2 className="text-xl font-semibold heading">
           Select Hotel Reservation
         </h2>
         {hotelBookings.length > 0 ? (
-          <select
-            aria-label="Select a Hotel Booking"
-            value={selectedHotelId}
-            onChange={(e) =>
-              setSelectedHotelId(e.target.value === "" ? "" : Number(e.target.value))
-            }
-            className="field"
-          >
-            <option value="">-- Select a Hotel Booking --</option>
-            {hotelBookings.map((booking) => (
-              <option key={booking.id} value={booking.id}>
-                {hotelLabel(booking)}
-              </option>
-            ))}
-          </select>
+          <ReservationPicker
+            kind="hotel"
+            options={hotelBookings.map(hotelOption)}
+            selectedId={selectedHotelId}
+            onSelect={setSelectedHotelId}
+          />
         ) : (
           !loading && (
             <p className="muted">No unlinked hotel bookings available. <Link className="text-blue-600 dark:text-blue-300 underline" href="/hotels">Find a stay</Link></p>

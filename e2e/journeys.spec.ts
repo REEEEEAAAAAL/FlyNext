@@ -2,6 +2,8 @@ import { test, expect, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { PDFDocument } from "pdf-lib";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { hotelReference } from "../app/lib/booking-display";
+import type { FlightBookingListItem } from "../types";
 
 const fixture = JSON.parse(readFileSync("test-results/fixture.json", "utf8")) as {hotelId:number;roomId:number;checkIn:string;checkOut:string};
 const password = "synthetic-e2e-only-password";
@@ -90,9 +92,34 @@ test("visitor, registration, flight and hotel, combined trip, DEMO receipt, owne
   await ownerPage.goto(`/hotels/${fixture.hotelId}/room-types/${fixture.roomId}/edit`);
   await expect(ownerPage.getByText(/Guest:.*Synthetic Traveller/)).toBeVisible();
   await ownerContext.close();
+  // Keep the real booking selectable while forcing the picker to scroll.
+  await page.route("**/api/user/flight-bookings", async route => {
+    const response = await route.fetch();
+    const body: { bookings: FlightBookingListItem[] } = await response.json();
+    const source = body.bookings.find(booking => booking.id === flightBooking.reservationId);
+    if (source) {
+      body.bookings.push(...Array.from({ length: 10 }, (_, index) => ({
+        ...source,
+        id: 1_000_000 + index,
+        afsBookingId: `EXTRA${index}`,
+      })));
+    }
+    await route.fulfill({ response, json: body });
+  }, { times: 1 });
   await page.goto("/itineraries/new");
-  await page.getByRole("combobox",{name:"Select a Flight Booking"}).selectOption(String(flightBooking.reservationId));
-  await page.getByRole("combobox",{name:"Select a Hotel Booking"}).selectOption(String(hotelBooking.id));
+  await page.getByText("Select a flight booking",{exact:true}).click();
+  const flightChoices = page.getByRole("group", { name: "Select a flight booking", exact: true });
+  await expect(flightChoices.getByRole("radio")).toHaveCount(12);
+  expect(await flightChoices.evaluate(list => ({
+    scrolls: list.scrollHeight > list.clientHeight,
+    optionsFit: [...list.querySelectorAll("label")].every(row => row.scrollHeight <= row.clientHeight + 1),
+  }))).toEqual({ scrolls: true, optionsFit: true });
+  await flightChoices.getByRole("radio",{name:new RegExp(`^#${flightBooking.bookingReference}\\b`)}).check();
+  await expect(flightChoices).toBeHidden();
+  await page.getByText("Select a hotel booking",{exact:true}).click();
+  const hotelChoices = page.getByRole("group", { name: "Select a hotel booking", exact: true });
+  await hotelChoices.getByRole("radio",{name:new RegExp(`^#${hotelReference(hotelBooking.id)}\\b`)}).check();
+  await expect(hotelChoices).toBeHidden();
   await page.getByRole("button",{name:"Create Itinerary",exact:true}).click();
   await expect(page).toHaveURL(/\/itineraries\/\d+/);
   const itineraryId=new URL(page.url()).pathname.split("/").pop();
