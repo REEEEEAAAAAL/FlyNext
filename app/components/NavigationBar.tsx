@@ -63,6 +63,8 @@ export default function NavigationBar() {
         {!signedIn && navigationToggle}
       </div>
     </div>
-    {mobile && <nav ref={mobileMenu} id="mobile-navigation" className="mobile-navigation" aria-label="Mobile navigation">{links(primary)}<div className="nav-divider" />{signedIn && links(account)}{links(signedIn ? [["/notifications", "Notifications"], ["/hotels/owner", "Host workspace"], ["/auth/logout", "Log out"]] : [["/auth/login", "Log in"], ["/auth/register", "Create account"]])}</nav>}
+    {mobile && <nav ref={mobileMenu} id="mobile-navigation" className="mobile-navigation" aria-label="Mobile navigation">
+      {links(primary)}
+    </nav>}
   </header>;
 }

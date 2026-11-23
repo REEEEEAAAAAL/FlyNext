@@ -3,7 +3,7 @@
  * `POST /api/notifications` — record a notification for the caller.
  *
  * Response contract, relied on by `app/notifications/page.tsx`:
- * - `200 { notifications: NotificationDto[] }`
+ * - `200 { notifications: NotificationDto[], hasOlderUnread: boolean }`
  * - `201 { notification: NotificationDto }`
  * - `400 { error: "Missing content in request body" }`
  * - `401 { error: "Unauthorized" }`
@@ -35,7 +35,19 @@ export const GET = withRoute(async (request) => {
 		take: MAX_NOTIFICATIONS,
 	});
 
-	return jsonOk({ notifications });
+	// The bulk action also covers rows omitted by the list limit.
+	const hasOlderUnread = notifications.length === MAX_NOTIFICATIONS && Boolean(
+		await prisma.notification.findFirst({
+			where: {
+				userId,
+				isRead: false,
+				id: { notIn: notifications.map(({ id }) => id) },
+			},
+			select: { id: true },
+		})
+	);
+
+	return jsonOk({ notifications, hasOlderUnread });
 });
 
 export const POST = withRoute(async (request) => {

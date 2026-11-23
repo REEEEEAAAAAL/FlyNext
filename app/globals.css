@@ -565,6 +565,8 @@ button:disabled { cursor: not-allowed; opacity: .55; }
 h1, h2, h3 { letter-spacing: -.035em; line-height: 1.2; }
 h1 { color: var(--ink); }
 .app-main { min-height: calc(100vh - 190px); padding: 36px 24px 64px; outline: none; }
+/* Keep the footer close to the final home card on tall viewports. */
+.app-main:has(> .home-page) { min-height: 0; padding-block-end: clamp(24px, 3vw, 40px); }
 .app-main > :not(.home-page) { width: 100%; }
 :root { --page-max-width: 72rem; --page-form-width: 48rem; --page-compact-width: 28rem; }
 .page-shell { width: 100%; min-width: 0; max-width: var(--page-max-width); margin-inline: auto; padding: 32px; }
@@ -635,11 +637,12 @@ h1 { color: var(--ink); }
 .mobile-trigger, .mobile-navigation { display: none; }
 .site-footer { width: calc(100% - 48px); max-width: var(--page-max-width); margin-inline: auto; padding-block: 28px; border-top: 1px solid var(--line); display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px 16px; font-size: 12px; color: var(--text-muted); }
 .site-footer > a:first-child { font-size: 18px; font-weight: 700; color: var(--ink); }
-/* The 32px link centers a 20px glyph. Move the whole group by its 6px end inset to align the ink edge. */
+/* Offset the end inset of the 32px target to align the 20px GitHub icon with the footer edge. */
 .site-footer-links { margin-inline-end: -6px; display: inline-flex; align-items: center; gap: 12px; }
 .site-footer-links > a { display: inline-flex; align-items: center; min-height: 44px; }
-.site-footer-divider { width: 1px; height: 18px; background: var(--line); }
-.site-footer-github { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; min-height: 32px; border-radius: .4rem; }
+/* Center the divider between the text and the icon, which sits inside a wider link. */
+.site-footer-divider { position: relative; inset-inline-start: 3px; width: 1px; height: 18px; background: var(--line); }
+.site-footer-github { justify-content: center; min-width: 32px; border-radius: .4rem; }
 .site-footer-github:hover { color: var(--ink); }
 .skip-link { position: fixed; left: 12px; top: -100px; z-index: 150; padding: 12px 20px; background: var(--surface); color: var(--ink); border: 2px solid var(--primary); }
 .skip-link:focus { top: 12px; }
@@ -672,7 +675,7 @@ h1 { color: var(--ink); }
 .step-card h2 { font-size: 21px; font-weight: 650; color: var(--ink); }
 .step-card p { font-size: 14px; color: var(--text-muted); margin: 12px 0 24px; }
 .step-action { margin-top: auto; font-size: 13px; font-weight: 600; color: var(--primary); }
-.host-banner { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 28px; padding: 24px 28px; border-radius: var(--radius); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); border: 1px solid var(--line); }
+.host-banner { display: flex; justify-content: space-between; align-items: center; gap: 24px; margin-top: 28px; padding: 24px 28px; border-radius: var(--radius); background: color-mix(in srgb, var(--accent) 4%, var(--surface)); border: 1px solid var(--line); }
 .host-banner h2 { margin: 0 0 6px; font-size: 26px; font-weight: 650; color: var(--ink); }
 .host-banner p.muted { font-size: 14px; }
 .search-intro { color: var(--text-muted); margin: -12px 0 28px; max-width: 600px; }
@@ -752,7 +755,6 @@ h1 { color: var(--ink); }
  .mobile-trigger { display: inline-flex; padding: 10px; }
  .nav-shell { min-height: 72px; gap: 8px; }
  .mobile-navigation { position: absolute; inset-inline: 0; top: 100%; background: var(--surface); box-shadow: var(--overlay-shadow); display: grid; padding: 12px 24px 20px; border-top: 1px solid var(--line); max-height: 75vh; overflow-y: auto; }
- .nav-divider { border-top: 1px solid var(--line); margin: 8px 0; }
  .hero-grid { gap: 28px; }
  .hero-copy h1 { font-size: clamp(34px, 5vw, 44px); }
  .journey-art { min-height: 300px; }

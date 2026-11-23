@@ -16,7 +16,7 @@ npm run build
 
 `npm test` is database-independent and does not read local environment files. Type checking, Next.js builds and E2E builds must run sequentially when sharing `.next`. `npm audit --audit-level=high` checks current advisories without upgrading dependencies. Never disable safety, runtime-error, type or lint checks to hide a failure.
 
-The hotel calendar regression uses simulated dates across 2026–2028, leap day and DST in several time zones. Run the focused database cases through the guarded runner:
+The hotel calendar regression uses simulated dates across 2026–2028, leap day and DST in several time zones. After [selecting the dedicated test database](#database-and-browser-tests), verify the target and run the focused cases through the guarded runner.
 
 ```sh
 npm run test:db:verify
@@ -41,9 +41,13 @@ npx playwright test --config playwright.ui.config.ts --project=chrome
 
 For flight changes, check a direct flight alongside a connection, then select both directions of a round trip and change the result order. Verify that each direction keeps its selection and shows its own transfer airports in search, booking details, itineraries, checkout, and the PDF. Records with an airport code only use the reference catalogue when it contains that code. For stay changes, expand nightly availability at a narrow viewport and check that the monthly calendar fits and distinguishes zero inventory from missing data. Use the guarded E2E runner for flows that actually create or cancel reservations.
 
+The navigation cases verify that the mobile menu contains Flights, Stays and My trips and that the Host workspace footer link appears on traveler pages. The homepage and hotel management pages omit that footer link. The notification case exercises individual reads, an unsuccessful bulk request, a successful retry, and the unread badge refresh using API fixtures. For database coverage of account ownership, older unread rows and repeat bulk requests, verify the test target below and run `npm run test:integration -- tests/security.authorization.test.ts`.
+
 ## Database and browser tests
 
 Integration and E2E runners migrate and clear synthetic records. They require a dedicated disposable database, confirm its identity before writes, and exclude configured business databases. Do not bypass the runners, reuse a running app server for E2E, or redirect these tests to a Docker application database.
+
+`npm run test:db:verify` performs a read-only identity check using the same test configuration as integration and E2E. Use it for either of the following targets.
 
 ### Local PostgreSQL
 
@@ -59,7 +63,7 @@ npm run test:e2e
 npm run test:db:stop
 ```
 
-The helper owns `.local-test-db/` and `.env.test.local`, creates a marked `flynext_test` database on loopback port 55432, and preserves existing configuration. Keep the cluster, identity metadata and matching environment file together. Other databases and services are outside the helper's scope.
+The helper owns `.local-test-db/` and `.env.test.local`, creates a marked `flynext_test` database on loopback port 55432, and preserves existing configuration. The start command checks the local database identity. With `FLYNEXT_TEST_ENV=local`, the shared verification command and the test runners read `.env.test.local`. Use `npm run test:db:check` to check the running local cluster directly. Keep the cluster, identity metadata and matching environment file together.
 
 ### Neon test target
 
@@ -77,7 +81,7 @@ npm run test:e2e
 
 Enrollment verifies database ownership and identity, writes a database COMMENT marker, and creates ignored `.neon-test-approval.json`; it does not migrate or clear tables. Existing enrollment is preserved. A test filename, `_test` suffix or shell flag alone is not authorization. Subsequent runners recheck the marker, OID, role and target fingerprint. Migration setup derives a direct connection from the same pooled Neon endpoint for DDL.
 
-Use `.env.test` for Neon; set `FLYNEXT_TEST_ENV=local` only for the generated loopback alternative. E2E starts its own single-worker production server on port 3210 and requires a current build. Test configuration forces built-in AFS and disables real Cloudinary credentials.
+With `FLYNEXT_TEST_ENV` unset, the shared verification command and the test runners read `.env.test` for Neon. E2E starts its own single-worker production server on port 3210 and requires a current build. Test configuration forces built-in AFS and disables real Cloudinary credentials.
 
 ## GitHub Actions
 

@@ -37,7 +37,7 @@ FlyNext 是一个全栈旅行预订应用，作为软件工程作品集项目展
 | 行程 | 将预订组合进行程、查看合计金额并管理其中的预订。每个行程最多关联一个航班预订和一个酒店预订。 |
 | DEMO 结账 | 核对行程总额并确认模拟预订。PDF 收据保留确认快照，并在资料可用时列出去程和返程各自的转机地点与航段。不处理真实支付。 |
 | 账户 | 注册、登录、管理个人资料和头像，并维护可刷新的会话。 |
-| 通知 | 查看账户通知及未读数量。 |
+| 通知 | 查看近期通知和未读数量。可逐条标记已读，也可用 **Mark all as read** 将更早的未读通知一并标记为已读。 |
 | 酒店业主 | 管理自有房源、预览上传照片、编辑房型和逐夜库存，并查看预订和可用量摘要。受保护操作会核验所有权。 |
 
 响应式工作流覆盖桌面、平板和移动端布局，并支持浅色与深色主题。浏览器覆盖包括旅客与房主操作、键盘和焦点行为、无障碍扫描以及大型合成酒店列表。
@@ -157,16 +157,19 @@ npm run dev
 | `npm run typecheck` | 检查应用代码和测试代码的类型。 |
 | `npm run lint` | 运行 ESLint。 |
 | `npm test` 或 `npm run test:unit` | 运行与数据库无关的 Vitest 测试。 |
-| `npm run test:db:verify` | 数据库测试前核验已登记的 Neon 测试目标。 |
-| `npm run test:integration` | 在已登记测试库上运行使用合成数据的集成测试。 |
+| `npm run test:db:check` | 核验由项目生成的本地 PostgreSQL 测试集群。 |
+| `npm run test:db:verify` | 核验集成和 E2E 将使用的测试库。 |
+| `npm run test:integration` | 在已核验的专用测试库上运行集成测试。 |
 | `npm run test:e2e` | 运行受保护的 Playwright E2E 工作流；先运行 `npm run build`。 |
 | `npm run build:server` | 编译独立服务端 TypeScript 产物。 |
 | `npm run build` | 创建 Next.js 生产构建。 |
 | `npm audit --audit-level=high` | 检查高危及以上级别的依赖安全公告。 |
 
-默认 `npm test` 工作流不会读取环境文件或连接数据库。集成和 E2E 测试使用已核验的专用 loopback 测试库或独立登记的 Neon `flynext_test` 目标，并可能迁移数据库和清理合成测试数据。必须依次运行 `test:db:verify`、`test:integration` 和 `test:e2e`，不能指向开发库或生产库。E2E 在构建后以单 worker 模式启动自己的 3210 端口生产服务器。运行数据库测试前请阅读[开发指南](docs/DEVELOPMENT.md)。仅依赖 Docker Desktop / Compose 的完整应用与独立 PostgreSQL 部署，请参阅 [Docker 使用指南](docs/DOCKER.md)。指南包含独立凭据生成、身份核验、首次完整演示数据初始化、持久化、显式重置和容器业务烟测。默认（包括生产环境）仍使用内置 AFS。可选四服务独立 AFS 使用加固的私有供应商；隔离配置、故障恢复、并发检查和持久化命令见 Docker 指南。
+默认 `npm test` 不读取环境文件或连接数据库。集成和 E2E 测试可能迁移专用测试库并清理合成数据。设置 `FLYNEXT_TEST_ENV=local` 可选择由项目生成的本地 PostgreSQL 集群。使用在 `.env.test` 中配置并登记的 Neon `flynext_test` 库时，请将 `FLYNEXT_TEST_ENV` 留空。两种目标均用 `test:db:verify` 核验，再依次运行 `test:integration` 和 `test:e2e`。E2E 在构建后以单 worker 模式启动自己的 3210 端口生产服务器。环境配置和测试命令见[开发指南](docs/DEVELOPMENT.md)。
 
-数据库校验命令会验证目标确实是已登记的测试库；仅凭库名带有 `_test` 后缀不足以证明安全。测试套件拒绝生产库和未登记的远程库，并在破坏性操作前后再次核验数据库身份。不要绕过项目运行器，也不要让 E2E 复用已运行的服务器。CI 数据库测试需要另行登记的独立端点和受限角色；复制开发者的 `.env.test` 并不能完成 CI 配置。
+核验命令会将目标与本地集群标记或远程登记记录比对。测试运行器会在破坏性操作前后核验数据库身份，并拒绝使用业务库或未登记的远程库。CI 数据库测试需要独立登记的端点和受限角色。
+
+使用 Docker Desktop / Compose 启动完整应用和独立 PostgreSQL，请参阅 [Docker 使用指南](docs/DOCKER.md)。指南涵盖独立凭据生成、受保护的演示数据初始化、持久化、显式重置和容器业务烟测。部署默认使用内置 AFS。加固的独立 AFS 配置及故障恢复、并发和持久化检查也见该指南。
 
 ## API 约定
 
@@ -176,6 +179,7 @@ npm run dev
 - JSON 数值字段保持为数字。客户端应按各资源文档使用对应的响应形状，不能假设每个成功响应都采用同一种包装。
 - 必要的预订和结账写入使用 `Idempotency-Key`。重试同一操作时重复使用原键；不同请求负载需要新键。
 - 已鉴权的房主预订数据仅对当前获准的房主开放。公开酒店响应不包含客人预订记录。
+- `GET /api/notifications` 返回最近最多 100 条通知及 `hasOlderUnread` 标志。`PUT /api/notifications/read-all` 会将当前已认证账户的全部未读通知标记为已读，并通过 `updatedCount` 返回更新条数。
 
 ## 航班供应商
 
@@ -213,9 +217,11 @@ FlyNext 的 AFS 客户端契约支持两种按请求选择的后端：
 
 截图使用合成数据，展示当前界面，不代表已部署的网站。
 
+![FlyNext 首页，展示航班和住宿搜索、行程步骤与房东工作台入口](docs/screenshots/home-desktop.png)
+
 | 桌面端转机航班 | 移动端转机航班 | DEMO 结账确认 |
 | --- | --- | --- |
-| ![桌面端并排展示去程和返程，标出转机机场](docs/screenshots/flight-connections-desktop.png) | ![移动端航班结果标出波士顿转机](docs/screenshots/flight-connections-mobile.png) | ![已确认行程的去返程路线和 PDF 下载入口](docs/screenshots/demo-confirmation.png) |
+| ![桌面端完整往返航班搜索页面，并排展示去程和返程结果](docs/screenshots/flight-connections-desktop.png) | ![移动端完整往返航班搜索页面，展示波士顿转机和已选去返程航班](docs/screenshots/flight-connections-mobile.png) | ![已确认行程的去返程路线和 PDF 下载入口](docs/screenshots/demo-confirmation.png) |
 
 ## 限制与许可
 

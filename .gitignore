@@ -72,3 +72,7 @@ repair-flight-directions.backup.json
 
 # Private local development records and production operation files
 /docs/internal/
+
+# Local agent instructions
+/AGENTS.md
+/AGENTS.zh-CN.md

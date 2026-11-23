@@ -20,6 +20,8 @@
 
 import { beforeEach, afterAll, describe, expect, it } from "vitest";
 import { PUT as markNotificationRead } from "@/app/api/notifications/[notificationId]/read/route";
+import { PUT as markAllNotificationsRead } from "@/app/api/notifications/read-all/route";
+import { GET as listNotifications } from "@/app/api/notifications/route";
 import { DELETE as cancelHotelBooking } from "@/app/api/hotels/book/route";
 import {
   DELETE as deleteRoomType,
@@ -92,6 +94,43 @@ describe("IDOR: a caller cannot act on another user's objects", () => {
       select: { isRead: true },
     });
     expect(stored.isRead).toBe(true);
+  });
+
+  it("marks all unread notifications for the caller, including older rows hidden by the list limit", async () => {
+    const owner = await createUser();
+    const otherUser = await createUser();
+    const otherNotification = await createNotification({ userId: otherUser.id });
+    await prisma.notification.createMany({
+      data: Array.from({ length: 102 }, (_, index) => ({
+        userId: owner.id,
+        content: `Notification ${index}`,
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, index)),
+        isRead: index !== 0 && index !== 101,
+      })),
+    });
+    const token = tokenFor(owner.id);
+
+    const listing = await callRoute(listNotifications, { token });
+    expect(listing.status).toBe(200);
+    const { notifications, hasOlderUnread } = await readJson<{
+      notifications: { isRead: boolean }[];
+      hasOlderUnread: boolean;
+    }>(listing);
+    expect(notifications).toHaveLength(100);
+    expect(notifications.filter(({ isRead }) => !isRead)).toHaveLength(1);
+    expect(hasOlderUnread).toBe(true);
+
+    const anonymous = await callRoute(markAllNotificationsRead, { method: "PUT" });
+    expect(anonymous.status).toBe(401);
+    const result = await callRoute(markAllNotificationsRead, { method: "PUT", token });
+    expect(result.status).toBe(200);
+    expect(await readJson(result)).toEqual({ updatedCount: 2 });
+    expect(await prisma.notification.count({ where: { userId: owner.id, isRead: false } })).toBe(0);
+    expect((await prisma.notification.findUniqueOrThrow({ where: { id: otherNotification.id } })).isRead).toBe(false);
+
+    const retry = await callRoute(markAllNotificationsRead, { method: "PUT", token });
+    expect(retry.status).toBe(200);
+    expect(await readJson(retry)).toEqual({ updatedCount: 0 });
   });
 
   it("refuses to cancel a hotel booking that belongs to somebody else", async () => {

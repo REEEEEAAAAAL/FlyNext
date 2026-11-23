@@ -28,8 +28,8 @@ async function installFixtures(page: Page) {
     let body: unknown;
     if (path === "/api/auth/refresh") body = { accessToken: token };
     else if (path === "/api/user") body = { user: { id: 1, firstName: "Alex", lastName: "Traveller", email: "alex@example.invalid", IsHotelOwner: true } };
-    else if (path === "/api/notifications/unread-count") body = { count: 0 };
-    else if (path === "/api/notifications") body = { notifications: [] };
+    else if (path === "/api/notifications/unread-count") body = { unreadCount: 0 };
+    else if (path === "/api/notifications") body = { notifications: [], hasOlderUnread: false };
     else if (path.endsWith("/reservations")) body = { reservations: [] };
     else if (path === "/api/hotels/1/room-types/1") body = { roomType: room, availabilityRecords: Array.from({ length: 60 }, (_, i) => ({ date: `${day(i)}T00:00:00Z`, availability: 8 })) };
     else if (path === "/api/hotels/1") body = { hotel };
@@ -71,16 +71,174 @@ async function checkBounds(page: Page) {
       ? [`${input.id || "stay date"}: ${bounds.width}px, container ${box.width}px, font ${style.fontSize}`] : [];
   }));
   expect(issues).toEqual([]);
+  await checkFooter(page);
+}
+
+async function checkFooter(page: Page) {
   const footer = page.locator(".site-footer");
+  const hasHostLink = !["/", "/hotels/owner", "/hotels/new", "/hotels/1/edit", "/hotels/1/room-types/new", "/hotels/1/room-types/1/edit"].includes(new URL(page.url()).pathname);
+  const hostLink = footer.getByRole("link", { name: "Host workspace", exact: true });
+  if (hasHostLink) {
+    await expect(hostLink).toHaveAttribute("href", "/hotels/owner");
+  } else {
+    await expect(hostLink).toHaveCount(0);
+  }
   const links = await footer.locator("a").evaluateAll(items => items.map(item => {
     const box = item.getBoundingClientRect();
     return { top: box.top, bottom: box.bottom, left: box.left, right: box.right };
   }));
-  expect(links).toHaveLength(3);
+  await expect(footer.getByRole("link", { name: "FlyNext", exact: true })).toHaveAttribute("href", "/");
+  await expect(footer.getByRole("link", { name: "FlyNext source code on GitHub" })).toHaveAttribute("href", "https://github.com/REEEEEAAAAAL/FlyNext");
+  expect(links).toHaveLength(hasHostLink ? 3 : 2);
   expect(Math.max(...links.map(link => link.top))).toBeLessThan(Math.min(...links.map(link => link.bottom)));
   expect(links.every(link => link.left >= 0 && link.right <= page.viewportSize()!.width)).toBe(true);
   await expect(footer).not.toContainText("A portfolio travel demo.");
 }
+
+test("home card colors, footer spacing and the existing host entry on desktop and mobile", async ({ page }) => {
+  const unexpected = await installFixtures(page);
+  for (const viewport of [{ width: 320, height: 844 }, { width: 901, height: 844 }, { width: 1920, height: 1080 }]) {
+    await page.setViewportSize(viewport);
+    for (const colorScheme of ["light", "dark"] as const) {
+      await page.emulateMedia({ colorScheme });
+      await page.goto("/");
+      await checkBounds(page);
+
+      const styles = await page.evaluate(() => {
+        const lastCard = document.querySelector(".host-banner")!;
+        const footer = document.querySelector(".site-footer")!;
+        return {
+          gap: footer.getBoundingClientRect().top - lastCard.getBoundingClientRect().bottom,
+          steps: Array.from(document.querySelectorAll(".step-card"), (card) => getComputedStyle(card).backgroundColor),
+          host: getComputedStyle(lastCard).backgroundColor,
+          surface: getComputedStyle(document.querySelector(".site-header")!).backgroundColor,
+          canvas: getComputedStyle(document.body).backgroundColor,
+        };
+      });
+      expect(styles.gap).toBeGreaterThanOrEqual(24);
+      expect(styles.gap).toBeLessThanOrEqual(40);
+      expect(styles.steps).toEqual(Array(3).fill(styles.surface));
+      expect(styles.host).not.toBe(styles.surface);
+      expect(styles.host).not.toBe(styles.canvas);
+
+      const primary = page.getByRole("navigation", { name: "Primary", exact: true });
+      await expect(primary.getByRole("link", { name: "Host workspace", exact: true })).toHaveCount(0);
+      await page.getByRole("link", { name: "Open host workspace", exact: true }).click();
+      await expect(page).toHaveURL(/\/hotels\/owner$/);
+      await expect(page.getByRole("heading", { name: "Your host workspace" })).toBeVisible();
+      await expect(primary.getByRole("link", { name: "Host workspace", exact: true })).toHaveCount(0);
+      await checkFooter(page);
+      if (viewport.width >= 901) {
+        await primary.getByRole("link", { name: "Stays", exact: true }).click();
+        await expect(page).toHaveURL(/\/hotels$/);
+        await checkFooter(page);
+      }
+    }
+  }
+  expect(unexpected).toEqual([]);
+});
+
+test("the signed-out mobile menu shows travel links while sign-in stays in the header", async ({ page }) => {
+  const unexpected = await installFixtures(page);
+  await page.route("**/api/auth/refresh", (route) => route.fulfill({ status: 401, json: { error: "Unauthorized" } }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "Toggle navigation" }).click();
+  const menu = page.getByRole("navigation", { name: "Mobile navigation" });
+  await expect(menu.getByRole("link")).toHaveText(["Flights", "Stays", "My trips"]);
+  await expect(page.getByRole("link", { name: "Sign in", exact: true })).toHaveAttribute("href", "/auth/login");
+  expect(unexpected).toEqual([]);
+});
+
+test("the signed-in mobile menu shows only travel links", async ({ page }) => {
+  const unexpected = await installFixtures(page);
+  await page.goto("/");
+  const accountButton = page.getByRole("button", { name: "My account" });
+  await expect(accountButton).toBeVisible();
+  const toggle = page.getByRole("button", { name: "Toggle navigation" });
+  await toggle.click();
+  const menu = page.getByRole("navigation", { name: "Mobile navigation" });
+  await expect(menu.getByRole("link")).toHaveText(["Flights", "Stays", "My trips"]);
+  await menu.getByRole("link", { name: "Stays", exact: true }).click();
+  await expect(page).toHaveURL(/\/hotels$/);
+  await expect(menu).toHaveCount(0);
+  await checkFooter(page);
+
+  await toggle.click();
+  await expect(menu.getByRole("link", { name: "Stays", exact: true })).toHaveAttribute("aria-current", "page");
+  await accountButton.click();
+  await expect(page.getByRole("navigation", { name: "Account", exact: true }).getByRole("link", { name: "Host workspace", exact: true })).toHaveAttribute("href", "/hotels/owner");
+  expect(unexpected).toEqual([]);
+});
+
+test("the browser tab icon uses the FlyNext paper plane", async ({ page }) => {
+  const unexpected = await installFixtures(page);
+  await page.goto("/");
+  const icon = page.locator('head link[rel="icon"]');
+  await expect(icon).toHaveAttribute("href", /^\/icon\.svg(?:\?|$)/);
+  const href = await icon.getAttribute("href");
+  const response = await page.request.get(new URL(href!, page.url()).href);
+  expect(response.ok()).toBe(true);
+  expect(response.headers()["content-type"]).toContain("image/svg+xml");
+  const svg = await response.text();
+  const brandPaths = await page.locator(".brand svg path").evaluateAll((paths) => paths.map((path) => path.getAttribute("d")));
+  expect(brandPaths).toHaveLength(2);
+  for (const path of brandPaths) expect(svg).toContain(`d="${path}"`);
+  expect(unexpected).toEqual([]);
+});
+
+test("notification read actions refresh the badge and can be retried after a failure", async ({ page }) => {
+  const unexpected = await installFixtures(page);
+  const unread = new Set([1, 2]);
+  let bulkAttempts = 0;
+  await page.route("**/api/notifications/**", async (route) => {
+    const { pathname } = new URL(route.request().url());
+    if (pathname === "/api/notifications/unread-count") {
+      return route.fulfill({ json: { unreadCount: unread.size } });
+    }
+    expect(route.request().method()).toBe("PUT");
+    if (pathname === "/api/notifications/1/read") {
+      unread.delete(1);
+      return route.fulfill({ json: { notification: { id: 1, isRead: true } } });
+    }
+    expect(pathname).toBe("/api/notifications/read-all");
+    if (++bulkAttempts === 1) {
+      return route.fulfill({ status: 503, json: { error: "Try again in a moment" } });
+    }
+    unread.clear();
+    return route.fulfill({ json: { updatedCount: 1 } });
+  });
+  await page.route("**/api/notifications", (route) => route.fulfill({ json: {
+    notifications: [{ id: 1, content: "Trip changed", isRead: !unread.has(1), createdAt: "2026-01-01T12:00:00Z" }],
+    hasOlderUnread: unread.has(2),
+  } }));
+
+  await page.goto("/notifications");
+  const badge = page.getByRole("link", { name: /^Notifications/ });
+  const single = page.getByRole("button", { name: "Mark as Read: Trip changed" });
+  const bulk = page.getByRole("button", { name: "Mark all as read" });
+  const error = page.getByRole("main").getByRole("alert");
+  await expect(badge).toHaveAccessibleName("Notifications, 2 unread");
+  await single.click();
+  await expect(single).toHaveCount(0);
+  await expect(badge).toHaveAccessibleName("Notifications, 1 unread");
+
+  await bulk.click();
+  await expect(error).toHaveText("Try again in a moment");
+  await expect(bulk).toBeEnabled();
+  await expect(badge).toHaveAccessibleName("Notifications, 1 unread");
+
+  await bulk.press("Enter");
+  await expect(page.getByRole("status").filter({ hasText: "All notifications marked as read" })).toBeVisible();
+  await expect(badge).toHaveAccessibleName("Notifications");
+  await expect(bulk).toBeDisabled();
+  await expect(bulk).toBeFocused();
+  await expect(error).toHaveCount(0);
+  await page.reload();
+  await expect(bulk).toBeDisabled();
+  await expect(single).toHaveCount(0);
+  expect(bulkAttempts).toBe(2);
+  expect(unexpected).toEqual([]);
+});
 
 for (const width of [320, 360, 375, 390, 430]) {
   for (const theme of ["light", "dark"] as const) {

@@ -37,7 +37,7 @@ The project demonstrates how browser workflows connect to authenticated APIs, tr
 | Itineraries | Build an itinerary from reservations, review its running total, and manage the included bookings. An itinerary supports at most one flight reservation and one hotel reservation. |
 | DEMO checkout | Review the trip total and confirm a simulated booking. The PDF receipt preserves the confirmation snapshot and lists each direction's connections and flight segments when available. No real payment is processed. |
 | Accounts | Register, sign in, manage a profile and avatar, and maintain a refreshable session. |
-| Notifications | Read a per-account notification feed and unread count. |
+| Notifications | View recent notifications and an unread count. Mark items as read individually or use **Mark all as read** for all unread notifications in the account, including older ones. |
 | Hotel owners | Manage owned listings, preview uploaded photos, edit room types and nightly inventory, and review reservation and availability summaries. Ownership is checked on protected operations. |
 
 Responsive workflows support light and dark themes across desktop, tablet, and mobile layouts. Browser coverage includes traveler and owner tasks, keyboard and focus behavior, accessibility scans, and large synthetic hotel listings.
@@ -157,16 +157,19 @@ Never commit `.env`, database credentials, signing secrets, Cloudinary keys, or 
 | `npm run typecheck` | Type-check application code and test code. |
 | `npm run lint` | Run ESLint. |
 | `npm test` or `npm run test:unit` | Run database-independent Vitest tests. |
-| `npm run test:db:verify` | Verify the registered Neon test target before database tests. |
-| `npm run test:integration` | Run integration tests against the registered synthetic-data test database. |
+| `npm run test:db:check` | Verify the generated local PostgreSQL test cluster. |
+| `npm run test:db:verify` | Verify the test database selected for integration and E2E. |
+| `npm run test:integration` | Run integration tests against a verified disposable test database. |
 | `npm run test:e2e` | Run guarded Playwright E2E workflows; build first with `npm run build`. |
 | `npm run build:server` | Compile the standalone server TypeScript output. |
 | `npm run build` | Create the Next.js production build. |
 | `npm audit --audit-level=high` | Check installed dependency advisories at high severity and above. |
 
-The default `npm test` workflow does not read environment files or connect to a database. Integration and E2E use a verified disposable loopback or separately enrolled Neon `flynext_test` target; they may migrate and clear synthetic test data. Run `test:db:verify`, `test:integration`, and `test:e2e` sequentially, never against a development or production database. E2E starts its own single-worker production server on port 3210 after a build. Read the [Development guide](docs/DEVELOPMENT.md) before running database tests. For a complete local application and isolated PostgreSQL using only Docker Desktop / Compose, follow the [Docker guide](docs/DOCKER.md). It includes separate generated credentials, guarded first-time demo initialization, persistent volumes, an explicit reset command and container business smoke tests. The default, including production, uses the built-in AFS. The optional four-service AFS profile uses a hardened private provider; its isolated configuration, recovery, concurrency checks and persistence commands are in the Docker guide.
+The default `npm test` workflow does not read environment files or connect to a database. Integration and E2E may migrate a disposable test database and clear its synthetic data. Set `FLYNEXT_TEST_ENV=local` to select the generated local PostgreSQL cluster, or leave it unset to use an enrolled Neon `flynext_test` database configured in `.env.test`. Run `test:db:verify` for either target before running `test:integration` and `test:e2e` in that order. E2E starts its own single-worker production server on port 3210 after a build. See the [Development guide](docs/DEVELOPMENT.md) for setup and test commands.
 
-The database verification command proves the test target is the enrolled test database; a `_test` name alone is not sufficient. The suite refuses production and unregistered remote targets and rechecks database identity around destructive steps. Do not bypass the repository runners or reuse a running server for E2E. CI database tests require their own separately registered endpoint and restricted role; they are not configured merely by copying a developer's `.env.test`.
+The verification commands match the target to the generated local cluster or remote enrollment. The runners check database identity around destructive steps and refuse business databases and unregistered remote targets. CI database tests require their own registered endpoint and restricted role.
+
+For a complete local application and isolated PostgreSQL using only Docker Desktop / Compose, follow the [Docker guide](docs/DOCKER.md). It covers generated credentials, guarded demo initialization, persistent volumes, explicit reset and container smoke tests. The default deployment uses the built-in AFS. The guide also covers the hardened standalone AFS profile, including recovery, concurrency and persistence checks.
 
 ## API conventions
 
@@ -176,6 +179,7 @@ The database verification command proves the test target is the enrolled test da
 - JSON numeric fields remain numbers. Clients should use the documented response shape for each resource rather than assuming every successful route wraps its result identically.
 - Booking and checkout writes use `Idempotency-Key` where required. Reuse the same key for a retry of the same operation; a different payload requires a new key.
 - Authenticated owner reservation data is private and scoped to the currently authorized owner. Public hotel responses never include guest booking records.
+- `GET /api/notifications` returns up to 100 recent notifications and a `hasOlderUnread` flag. `PUT /api/notifications/read-all` marks every unread notification for the authenticated account as read and returns the number changed in `updatedCount`.
 
 ## Flight provider
 
@@ -213,9 +217,11 @@ The maintained documentation has four entry points: this README for architecture
 
 These screenshots use synthetic application data. They are product captures, not evidence of a currently hosted deployment.
 
+![FlyNext home page with flight and hotel search, itinerary steps, and the host workspace entrance](docs/screenshots/home-desktop.png)
+
 | Connecting flights, desktop | Connecting flights, mobile | DEMO checkout |
 | --- | --- | --- |
-| ![Outbound and return flight results with connection airports](docs/screenshots/flight-connections-desktop.png) | ![Mobile flight results showing a connection in Boston](docs/screenshots/flight-connections-mobile.png) | ![Confirmed trip with outbound and return route details and a PDF download](docs/screenshots/demo-confirmation.png) |
+| ![Full desktop round-trip search page with outbound and return flight results](docs/screenshots/flight-connections-desktop.png) | ![Full mobile round-trip search page with a Boston connection and selected flights in both directions](docs/screenshots/flight-connections-mobile.png) | ![Confirmed trip with outbound and return route details and a PDF download](docs/screenshots/demo-confirmation.png) |
 
 ## Limitations and license
 

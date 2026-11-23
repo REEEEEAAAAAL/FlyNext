@@ -1,12 +1,12 @@
 "use client";
 
 import { loginUrl } from "@/app/lib/return-path";
-
-import { getAccessToken, sessionFetch } from "@/app/lib/session";
+import { NOTIFICATION_READ_EVENT } from "@/app/lib/notification-events";
+import { clearAccessToken, getAccessToken, sessionFetch } from "@/app/lib/session";
+import { useFeedback } from "@/app/context/FeedbackContext";
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { clearAccessToken } from "@/app/lib/session";
 
 interface Notification {
   id: number;
@@ -17,9 +17,13 @@ interface Notification {
 
 export default function NotificationsPage() {
   const router = useRouter();
+  const { success } = useFeedback();
   const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [hasOlderUnread, setHasOlderUnread] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [pendingRead, setPendingRead] = useState<number | "all" | null>(null);
   const [error, setError] = useState("");
+  const hasUnread = hasOlderUnread || notifications.some((notification) => !notification.isRead);
 
   // Redirect to login if no access token is found.
   useEffect(() => {
@@ -68,9 +72,9 @@ export default function NotificationsPage() {
           const data = await res.json();
           setError(data.error || "Failed to fetch notifications.");
         } else {
-          const data = await res.json();
-          // The endpoint answers with `{ notifications: [...] }`.
-          setNotifications(data.notifications || []);
+          const data: { notifications: Notification[]; hasOlderUnread: boolean } = await res.json();
+          setNotifications(data.notifications);
+          setHasOlderUnread(data.hasOlderUnread);
         }
       } catch {
         setError("An error occurred while fetching notifications.");
@@ -81,35 +85,54 @@ export default function NotificationsPage() {
     fetchNotifications();
   }, []);
 
-  // Mark a notification as read.
-  const markAsRead = async (notificationId: number) => {
+  const markAsRead = async (target: number | "all") => {
+    if (pendingRead !== null || (target === "all" && !hasUnread)) return;
+    setPendingRead(target);
+    setError("");
+    const endpoint = target === "all"
+      ? "/api/notifications/read-all"
+      : `/api/notifications/${target}/read`;
+    const failure = target === "all"
+      ? "Could not mark all notifications as read. Please try again."
+      : "Could not mark this notification as read. Please try again.";
     try {
-      const token = getAccessToken();
-      const res = await sessionFetch(`/api/notifications/${notificationId}/read`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: token ? `Bearer ${token}` : "",
-        },
-      });
-      if (res.ok) {
-        setNotifications((prev) =>
-          prev.map((notif) =>
-            notif.id === notificationId ? { ...notif, isRead: true } : notif
-          )
-        );
-      } else {
+      const res = await sessionFetch(endpoint, { method: "PUT" });
+      if (!res.ok) {
         const data = await res.json();
-        setError(data.error || "Could not mark this notification as read. Please try again.");
+        setError(data.error || failure);
+        return;
       }
-    } catch (err) {
-      setError("Could not mark this notification as read. Please try again.");
+
+      setNotifications((prev) => prev.map((notification) =>
+        !notification.isRead && (target === "all" || notification.id === target)
+          ? { ...notification, isRead: true }
+          : notification
+      ));
+      if (target === "all") {
+        setHasOlderUnread(false);
+        success("All notifications marked as read");
+      }
+      window.dispatchEvent(new Event(NOTIFICATION_READ_EVENT));
+    } catch {
+      setError(failure);
+    } finally {
+      setPendingRead(null);
     }
   };
 
   return (
     <div className="page-shell page-shell--form records-page">
-      <h1 className="text-3xl font-bold mb-6 heading">Notifications</h1>
+      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1 className="text-3xl font-bold heading">Notifications</h1>
+        <button
+          type="button"
+          className="button-secondary aria-disabled:cursor-not-allowed aria-disabled:opacity-55"
+          aria-disabled={!hasUnread || pendingRead !== null}
+          onClick={() => markAsRead("all")}
+        >
+          {pendingRead === "all" ? "Marking as read…" : "Mark all as read"}
+        </button>
+      </header>
       {loading && <p role="status" className="muted">Loading notifications...</p>}
       {error && <p role="alert" className="text-red-600 dark:text-red-400">{error}</p>}
       {!loading && !error && notifications.length === 0 && (
@@ -138,6 +161,8 @@ export default function NotificationsPage() {
             </div>
             {!notif.isRead && (
               <button
+                type="button"
+                disabled={pendingRead !== null}
                 onClick={() => markAsRead(notif.id)}
                 aria-label={`Mark as Read: ${notif.content}`}
                 className="button-secondary"

@@ -1,178 +1,107 @@
 "use client";
 
-import { getAccessToken, sessionFetch } from "@/app/lib/session";
-
-import { useCallback, useEffect, useRef, useState } from "react";
+import { NOTIFICATION_READ_EVENT } from "@/app/lib/notification-events";
+import { getAccessToken, sessionFetch, subscribeToAccessToken } from "@/app/lib/session";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { subscribeToAccessToken } from "@/app/lib/session";
+import { useEffect, useState } from "react";
 
-/** How often the badge refreshes while the tab is visible. */
 const POLL_INTERVAL_MS = 5000;
-
-/** Longest back-off applied after the server asks the client to slow down. */
 const MAX_BACKOFF_MS = 120_000;
 
 /**
- * Notification counter for the navigation bar.
- *
- * The badge polls, so it is the one client component that can hurt the server on
- * its own: a forgotten timer, a dozen background tabs or an ignored `429` all turn
- * into a permanent query stream. Three rules keep it well behaved.
- *
- * - One timer, scheduled by `setTimeout`: the next poll is arranged only after
- *   the previous one settles, so a slow or failing request can never build a
- *   queue of overlapping fetches the way a fixed `setInterval` does.
- * - Back off when asked: the endpoint is rate limited and answers `429` with
- *   `Retry-After`; that value is honoured instead of retrying on the normal
- *   cadence, and the delay doubles on repeated refusals.
- * - Stop while hidden: a tab that is not being looked at has no reason to
- *   poll, so the timer is suspended and one refresh runs when it becomes visible
- *   again.
- *
- * `401` stops the loop outright: without a session there is nothing to count, and
- * the pages that need a token already redirect through `/auth/refresh`. The loop
- * resumes when a token is stored again — see `app/lib/session.ts`.
+ * Updates the unread count on a timer and immediately after a successful read.
+ * All refresh triggers share one request and timer, so a read during a poll
+ * queues a fresh count without letting the older poll overwrite it.
  */
 export default function NotificationBadge() {
     const [count, setCount] = useState(0);
-    const pathname = usePathname();
-
-    /** Pending timer, so it can be cleared on unmount or on a path change. */
-    const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    /** Current delay between polls; grows after a `429` and resets on success. */
-    const delayRef = useRef(POLL_INTERVAL_MS);
-    /** Guards against a refresh being scheduled twice for the same tick. */
-    const stoppedRef = useRef(false);
-
-    const clearTimer = useCallback(() => {
-        if (timerRef.current !== null) {
-            clearTimeout(timerRef.current);
-            timerRef.current = null;
-        }
-    }, []);
-
-    const fetchNotificationCount = useCallback(async () => {
-        try {
-            // Read the token on every tick rather than caching it: a `401` puts the
-            // loop on hold, and the token that lifts the hold is issued later, by
-            // `/auth/login` or `/auth/refresh`.
-            const token = getAccessToken();
-            if (!token) {
-                // Nothing to poll for while logged out.
-                stoppedRef.current = true;
-                return;
-            }
-
-            const res = await sessionFetch("/api/notifications/unread-count", {
-                headers: { Authorization: `Bearer ${token}` },
-            });
-
-            if (res.status === 401) {
-                /*
-                 * The session is gone, so there is nothing to count. The loop
-                 * stops until a new token is stored, which re-arms the effect
-                 * below through `subscribeToAccessToken` — without that
-                 * subscription the badge stayed frozen on its last count for the
-                 * rest of the page's life, because nothing remounts it while the
-                 * user is navigating.
-                 */
-                stoppedRef.current = true;
-                return;
-            }
-
-            if (res.status === 429) {
-                // Honour the server's own figure when it provides one, and
-                // otherwise double the delay, capped.
-                const retryAfter = Number(res.headers.get("retry-after"));
-                delayRef.current =
-                    Number.isFinite(retryAfter) && retryAfter > 0
-                        ? Math.min(retryAfter * 1000, MAX_BACKOFF_MS)
-                        : Math.min(delayRef.current * 2, MAX_BACKOFF_MS);
-                return;
-            }
-
-            if (res.ok) {
-                const data = (await res.json()) as { unreadCount?: number };
-                setCount(typeof data.unreadCount === "number" ? data.unreadCount : 0);
-                delayRef.current = POLL_INTERVAL_MS;
-            }
-        } catch {
-            // Offline or the request was aborted: keep the last known count and
-            // let the next tick try again.
-        }
-    }, []);
 
     useEffect(() => {
-        stoppedRef.current = false;
-        delayRef.current = POLL_INTERVAL_MS;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let active = true;
+        let inFlight = false;
+        let refreshPending = false;
+        let unauthorized = false;
+        let delay = POLL_INTERVAL_MS;
+        let retryAt = 0;
 
-        /** Run one poll, then schedule the next one. */
-        const tick = async () => {
-            if (stoppedRef.current) {
-                return;
-            }
-            if (document.hidden) {
-                // Suspended; `visibilitychange` below resumes the loop.
-                timerRef.current = setTimeout(tick, POLL_INTERVAL_MS);
-                return;
-            }
-            await fetchNotificationCount();
-            if (!stoppedRef.current) {
-                timerRef.current = setTimeout(tick, delayRef.current);
-            }
-        };
+        function clearTimer() {
+            clearTimeout(timer);
+            timer = undefined;
+        }
 
-        void tick();
-
-        const onVisibilityChange = () => {
-            if (!document.hidden) {
-                // Refresh immediately when the tab comes back, so the badge is
-                // never showing a count that is minutes out of date.
-                clearTimer();
-                void tick();
-            }
-        };
-
-        document.addEventListener("visibilitychange", onVisibilityChange);
-
-        /*
-         * A `401` stopped the loop; a new token is what restarts it. Without this
-         * subscription the badge never recovered: nothing remounts it while the
-         * user keeps navigating, so a single expired token froze the count until
-         * the page was reloaded by hand.
-         */
-        const unsubscribe = subscribeToAccessToken(() => {
+        function refresh() {
             clearTimer();
-            stoppedRef.current = false;
-            delayRef.current = POLL_INTERVAL_MS;
-            /*
-             * A session that ended has no unread count to show. Every page that
-             * handles a `401` drops the token, and the loop stops on the next poll
-             * either way — so without this the pill stayed on screen with the last
-             * count it saw, next to a "Login" link, until a reload.
-             */
-            if (getAccessToken() === null) {
-                setCount(0);
+            const token = getAccessToken();
+            if (!active || document.hidden || unauthorized || !token) return;
+            if (inFlight) {
+                refreshPending = true;
+                return;
             }
-            void tick();
+
+            // User-triggered refreshes share the polling endpoint's backoff.
+            const remaining = retryAt - Date.now();
+            if (remaining > 0) {
+                timer = setTimeout(refresh, remaining);
+                return;
+            }
+            void poll(token);
+        }
+
+        async function poll(token: string) {
+            inFlight = true;
+            refreshPending = false;
+            try {
+                const response = await sessionFetch("/api/notifications/unread-count");
+                if (!active || token !== getAccessToken()) return;
+
+                if (response.status === 401) {
+                    unauthorized = true;
+                } else if (response.status === 429) {
+                    const retryAfter = Number(response.headers.get("retry-after"));
+                    const nextDelay = Number.isFinite(retryAfter) && retryAfter > 0
+                        ? retryAfter * 1000
+                        : delay * 2;
+                    delay = Math.min(nextDelay, MAX_BACKOFF_MS);
+                    retryAt = Date.now() + delay;
+                } else if (response.ok) {
+                    const data: { unreadCount: number } = await response.json();
+                    if (active && !refreshPending && token === getAccessToken()) {
+                        setCount(data.unreadCount);
+                    }
+                    delay = POLL_INTERVAL_MS;
+                }
+            } catch {
+                // Keep the last count until a refresh succeeds.
+            } finally {
+                inFlight = false;
+                if (active && !document.hidden && !unauthorized) {
+                    if (refreshPending) refresh();
+                    else if (getAccessToken()) timer = setTimeout(refresh, delay);
+                }
+            }
+        }
+
+        const unsubscribe = subscribeToAccessToken(() => {
+            unauthorized = false;
+            delay = POLL_INTERVAL_MS;
+            retryAt = 0;
+            if (!getAccessToken()) setCount(0);
+            refresh();
         });
 
+        document.addEventListener("visibilitychange", refresh);
+        window.addEventListener(NOTIFICATION_READ_EVENT, refresh);
+        refresh();
+
         return () => {
-            stoppedRef.current = true;
+            active = false;
             clearTimer();
             unsubscribe();
-            document.removeEventListener("visibilitychange", onVisibilityChange);
+            document.removeEventListener("visibilitychange", refresh);
+            window.removeEventListener(NOTIFICATION_READ_EVENT, refresh);
         };
-    }, [clearTimer, fetchNotificationCount]);
-
-    // Marking a notification read on the notifications page changes the count, so
-    // refresh on arrival there rather than waiting for the next tick.
-    useEffect(() => {
-        if (pathname === "/notifications") {
-            void fetchNotificationCount();
-        }
-    }, [pathname, fetchNotificationCount]);
+    }, []);
 
     return (
         <Link href="/notifications" className="header-icon" title="Notifications" aria-label={`Notifications${count ? `, ${count} unread` : ""}`}>
